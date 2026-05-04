@@ -1,0 +1,8 @@
+ajab_live.sql — MySQL dump (XAMPP: localhost, user root, empty password).
+
+Import (example):
+  mysql -u root -p ajab_live < database/ajab_live.sql
+
+Or create DB first:
+  mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS ajab_live CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  mysql -u root -p ajab_live < database/ajab_live.sql
