@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html ng-app="wordsAdminApp">
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>Word details page</title>
+    <link href="/admin/css/admin.css" rel="stylesheet" type="text/css">
+    <link href="/common/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/common/lib/angular-multi-select/angular-multi-select.css">
+    <link rel='stylesheet' href='https://netdna.bootstrapcdn.com/font-awesome/4.0.0/css/font-awesome.min.css'>
+</head>
+<body>
+<a ng-href="home" target="_self">
+    <button type="button" class="btn btn-info admin-home">Admin home</button>
+</a>
+
+<div class="left">
+    <h2>Enter Word details</h2>
+
+    <div class="left">
+        <div >
+            <form name="wordForm" ng-controller="wordDetailsController"  ng-init="init()">
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Word Original</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <input type="text" name="word original" ng-model="formInfo.wordOriginal" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Word Transliteration</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <input type="text" name="word transliteration" ng-model="formInfo.wordTransliteration" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Diacritic</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <input type="text" name="word diacritic" ng-model="formInfo.diacritic" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Word Translation</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <input type="text" name="word translation" ng-model="formInfo.wordTranslation" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Related Songs</label>
+                    </div>
+                    <div name="related songs" class="col-sm-8 rowWiseSelect" multi-select input-model="songs" button-label="menuTitle"
+                         item-label="menuTitle" tick-property="ticked" output-model="formInfo.songs"></div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Related Reflections</label>
+                    </div>
+                    <div name="other related reflections" class="form-group col-sm-6 rowWiseSelect" multi-select input-model="reflections"
+                         button-label="title" item-label="title" tick-property="ticked"
+                         output-model="formInfo.reflections"></div>
+                </div>
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Related Couplets</label>
+                    </div>
+                    <div name="couplets" class="col-sm-8 rowWiseSelect" multi-select input-model="couplets" button-label="englishTransliteration"
+                         item-label="englishTransliteration" tick-property="ticked" output-model="formInfo.couplets"></div>
+                </div>
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Related Episodes</label>
+                    </div>
+                    <div name="episodes" class="col-sm-8 rowWiseSelect" multi-select input-model="episodes" button-label="englishTransliteration"
+                         item-label="englishTransliteration" tick-property="ticked" output-model="formInfo.episodes"></div>
+                </div>
+
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Related People</label>
+                    </div>
+                    <div name ="people" class="col-sm-2" multi-select input-model="people" button-label="name"
+                         item-label="name" tick-property="ticked" output-model="formInfo.people"></div>
+                </div>
+
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Related Stories</label>
+                    </div>
+                    <div name="stories" class="col-sm-8 rowWiseSelect" multi-select input-model="stories" button-label="mainTitle"
+                         item-label="mainTitle" tick-property="ticked" output-model="formInfo.stories"></div>
+                </div>
+
+                <div class="row form-group ">
+                    <div class="col-sm-2">
+                        <label>Glossary Meaning</label>
+                    </div>
+                    <div class="col-sm-8">
+                        <text-angular name="meaning" ng-model="formInfo.meaning"></text-angular>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Is this a Root Word ?</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <select name="root word" ng-model="formInfo.isRootWord" class="form-control"
+                                ng-init="formInfo.isRootWord = formInfo.isRootWord || false">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Word Intro Excerpt (English)</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <input type="text" name="word intro excerpt english" ng-model="formInfo.englishIntroExcerpt"
+                               class="form-control">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Word Intro Excerpt (Hindi)</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <input type="text" name="word intro excerpt hindi" ng-model="formInfo.hindiIntroExcerpt"
+                               class="form-control">
+                    </div>
+                </div>
+
+                <!--<admin-word-introduction word-introduction="{{formInfo.wordIntroduction}}"
+                                         word-introductions="formInfo.wordIntroductions"
+                                         poets="poets"></admin-word-introduction>-->
+
+
+                <div class="row form-group ">
+                    <div class="col-sm-2">
+                        <label>Word Introduction(English)</label>
+                    </div>
+                    <div class="col-sm-8">
+                        <text-angular name="wordIntroductionEnglish" ng-model="formInfo.wordIntroduction.wordIntroEnglish"></text-angular>
+                    </div>
+                </div>
+
+                <div class="row form-group ">
+                    <div class="col-sm-2">
+                        <label>Word Introduction(Hindi)</label>
+                    </div>
+                    <div class="col-sm-8">
+                        <text-angular name="wordIntroductionOriginal" ng-model="formInfo.wordIntroduction.wordIntroHindi"></text-angular>
+                    </div>
+                </div>
+
+
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Writer</label>
+                    </div>
+                    <div name="writer" class="col-sm-2" multi-select input-model="writers" button-label="name"
+                         item-label="name" tick-property="ticked" output-model="formInfo.writers"></div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Display "Ajab Shahar team"?</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <select name="display ajabshahar team" ng-model="formInfo.displayAjabShaharTeam" class="form-control"
+                                ng-init="formInfo.displayAjabShaharTeam = formInfo.displayAjabShaharTeam || false">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Word Intro Thumbnail Url</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <input type="text" name="thumbnail url" ng-model="formInfo.thumbnailUrl" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Show On LandingPage</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <select name="show on landingpage" ng-model="formInfo.showOnLandingPage" class="form-control"
+                                ng-init="formInfo.showOnLandingPage = formInfo.showOnLandingPage || false">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Default Reflection</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <!-- <select name="default reflection" ng-model="formInfo.defaultReflection"
+                                ng-options="reflection as reflection.title for reflection in formInfo.reflections track by reflection.id"
+                                class="form-control" ng-required="isReflectionRequired()">
+                            <option value=""></option>
+                        </select> -->
+                        <div style="min-width:200px" class="form-group col-sm-6" multi-select input-model="reflectionsDefault"
+                         button-label="title" item-label="title" tick-property="ticked"
+                         output-model="formInfo.defaultReflection"></div>
+                         <p style="color:red"><i>Please Select only one value for default reflection</i> </p>
+                    </div>
+
+                    <error-message name="Default Reflection"
+                                   show-error="isReflectionRequired() && !formInfo.defaultReflection"></error-message>
+                </div>
+
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Synonyms</label>
+                    </div>
+                    <div name="synonyms" class="col-sm-8 " multi-select input-model="synonyms" button-label="wordTransliteration"
+                         item-label="wordTransliteration" tick-property="ticked" output-model="formInfo.synonyms"></div>
+                </div>
+
+
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Related Words</label>
+                    </div>
+                    <div name="related words" class="col-sm-8 " multi-select input-model="relatedWords" button-label="wordTransliteration"
+                         item-label="wordTransliteration" tick-property="ticked" output-model="formInfo.relatedWords"></div>
+                </div>
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Meta Title</label>
+                    </div>
+                    <div class="col-sm-2">
+                        <input type="text" name="metaTitle" ng-model="formInfo.metaTitle" class="form-control">
+                    </div>
+                </div>
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Meta Keyword</label>
+                    </div>
+                    <div class="col-sm-2">
+                        <input type="text" name="metaKeyword" ng-model="formInfo.metaKeywords" class="form-control">
+                    </div>
+                </div>
+                <div class="row form-group">
+                    <div class="col-sm-2">
+                        <label>Meta Description</label>
+                    </div>
+                    <div class="col-sm-6">
+                        <textarea class="form-control" name="metaDescription" ng-model="formInfo.metaDescription" rows="5" cols="60"></textarea>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group col-sm-2">
+                        <label>Publish</label>
+                    </div>
+                    <div class="form-group col-sm-2">
+                        <select name="publish" ng-model="formInfo.publish" class="form-control"
+                                ng-init="formInfo.publish = formInfo.publish || false">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <button type="submit" ng-click="saveData()" class="btn btn-primary btn-lg">Save</button>
+                </div>
+
+                <!--<div ng-hide="formInfo.id == null" >-->
+                    <!--<button type="delete-word" ng-click="deleteWord(formInfo.id)" class="btn btn-danger btn-lg">Delete</button>-->
+                <!--</div>-->
+            </form>
+        </div>
+    </div>
+</div>
+<script src="/common/lib/underscore/underscore.js"></script>
+<script src="/common/lib/angular/angular.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.25/angular-cookies.js"></script>
+
+<script type="text/javascript" src="/common/lib/angular-multi-select/angular-multi-select.js"></script>
+<script type="text/javascript" src="/common/lib/angular-filter/dist/angular-filter.js"></script>
+<script type="text/javascript" src="/common/lib/textAngular/src/textAngular-sanitize.js"></script><script type="text/javascript" src="/common/lib/textAngular/src/textAngularSetup.js"></script>
+<script type="text/javascript" src="/common/lib/textAngular/src/textAngular.js"></script>
+
+<script type="text/javascript" src="/common/lib/rangy/rangy-core.min.js"></script>
+<script type="text/javascript" src="/common/lib/rangy/rangy-classapplier.min.js"></script>
+
+<script src="/common/lib/angular-route/angular-route.min.js"></script>
+<script type="text/javascript" src="/admin/js/services/contentService.js"></script>
+<script type="text/javascript" src="/admin/js/services/loginVerifyService.js"></script>
+<script type="text/javascript" src="/admin/js/common/app.js"></script>
+<script type="text/javascript" src="/admin/js/common/errorMessage.js"></script>
+
+<script type="text/javascript" src="/admin/js/words/wordsAdminApp.js"></script>
+<script type="text/javascript" src="/admin/js/directives/adminWordIntroduction.js"></script>
+<script type="text/javascript" src="/admin/js/controllers/words/wordDetailsController.js"></script>
+<script type="text/javascript" src="/admin/js/participate/angular-base64.js"></script>
+</body>
+</html>

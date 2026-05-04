@@ -1,0 +1,142 @@
+<?php
+include('inc/header.php');
+include('inc/sidebar.php');
+?>
+
+<style>
+    table.dataTable td, table.dataTable th {
+        white-space: nowrap;
+    }
+</style>
+
+<!-- Content Wrapper -->
+<div class="content-wrapper">
+    <!-- Content Header -->
+    <section class="content-header">
+        <div class="container-fluid">
+            <div class="row mb-2">
+                <div class="col-sm-6">
+                    <h1>Glossary List</h1>
+                </div>
+                <div class="col-sm-6">
+                    <ol class="breadcrumb float-sm-right">
+                        <li class="breadcrumb-item"><a href="<?= base_url('list') ?>">Home</a></li>
+                        <li class="breadcrumb-item active">Glossary List</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <section class="content">
+        <div class="container-fluid">
+            <?php if ($this->session->flashdata('success')): ?>
+                <div class="alert alert-success"><?php echo $this->session->flashdata('success'); ?></div>
+            <?php endif; ?>
+            <?php if ($this->session->flashdata('error')): ?>
+                <div class="alert alert-danger"><?php echo $this->session->flashdata('error'); ?></div>
+            <?php endif; ?>
+            
+            <div class="card">
+                
+
+                <div class="card-body">
+                    <table id="glossaryTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>Sl. No.</th>
+                                <th>Date Created</th>
+                                <th>Glossary Term</th>
+                                <th>Meaning</th>
+                                <th>Related Songs</th>
+                                <th>Published</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<?php include('inc/footer.php'); ?>
+
+<!-- DataTables & jQuery -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+$(document).ready(function() {
+    $('#glossaryTable').DataTable({
+        ajax: {
+            url: "<?= base_url('fetch-glossaries') ?>",
+            type: "GET",
+            dataSrc: 'data'
+        },
+        columns: [
+            { data: 'sl_no', title: 'Sl. No.', responsivePriority: 1 },
+            { data: 'date_created', title: 'Date Created' },
+            { data: 'glossary_term', title: 'Glossary Term' },
+            { data: 'glossary_meaning', title: 'Meaning' },
+            { data: 'related_songs', title: 'Related Songs' },
+            { data: 'is_published', title: 'Published', render: function(data) { return data == 'Yes' ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-danger">No</span>'; } },
+            {
+                data: 'id',
+                title: 'Action',
+                orderable: false,
+                searchable: false,
+                responsivePriority: 2,
+                render: function(data) {
+                    return `
+                        <a href="<?= base_url('glossary/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
+                        <button class="btn btn-sm btn-danger delete-glossary" data-id="${data}">Delete</button>
+                    `;
+                }
+            }
+        ],
+        responsive: true,
+        lengthChange: true,
+        autoWidth: false
+    });
+
+    // Delete functionality
+    $('#glossaryTable').on('click', '.delete-glossary', function() {
+        var id = $(this).data('id');
+        Swal.fire({
+            title: 'Are you sure?',
+            text: "You won't be able to revert this!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.ajax({
+                    url: '<?= base_url('glossary/delete/') ?>' + id,
+                    type: 'POST',
+                    success: function(response) {
+                        var res = JSON.parse(response);
+                        if (res.status == 'success') {
+                            Swal.fire('Deleted!', res.message, 'success');
+                            $('#glossaryTable').DataTable().ajax.reload();
+                        } else {
+                            Swal.fire('Error!', res.message, 'error');
+                        }
+                    },
+                    error: function() {
+                        Swal.fire('Error!', 'Failed to delete glossary.', 'error');
+                    }
+                });
+            }
+        });
+    });
+});
+</script>
