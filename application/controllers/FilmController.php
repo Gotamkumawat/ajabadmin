@@ -8,6 +8,7 @@ class FilmController extends CI_Controller {
         $this->load->database(); // Database connect
         $this->load->helper('url'); 
         $this->load->model('FilmModel'); // Model load
+        $this->load->model('WordModel');
         $this->load->library('session'); // Load session library for flash messages
     }
 
@@ -16,13 +17,20 @@ class FilmController extends CI_Controller {
     }
 
     public function save() {
+        // Edit submission must update, not insert
+        $editId = (int) $this->input->post('id');
+        if ($editId > 0) {
+            $this->update($editId);
+            return;
+        }
         // Handle thumbnail upload
         $thumbnail_Image = '';
         if (!empty($_FILES['thumbnail_Image']['name'])) {
             $config['upload_path'] = FCPATH . 'uploads/thumbnails/'; // Folder path
-            $config['allowed_types'] = 'jpg|jpeg|png|gif';
+            if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
+            $config['allowed_types'] = 'jpg|jpeg|png|gif|webp|avif';
             $config['max_size'] = 2048; // 2MB
-            $config['file_name'] = time() . '_' . $_FILES['thumbnail_Image']['name'];
+            $config['file_name'] = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnail_Image']['name']);
             $this->load->library('upload', $config);
             if ($this->upload->do_upload('thumbnail_Image')) {
                 $uploadData = $this->upload->data();
@@ -111,13 +119,24 @@ class FilmController extends CI_Controller {
     }
 
     public function update($id) {
+        @file_put_contents(FCPATH . 'film_update_debug.log',
+            "[".date('Y-m-d H:i:s')."] film update id=$id\n"
+            ."POST keys: ".implode(',', array_keys($_POST))."\n"
+            ."POST[related_keywords]=".(isset($_POST['related_keywords'])?var_export($_POST['related_keywords'],true):'(unset)')."\n"
+            ."POST[related_songs]=".(isset($_POST['related_songs'])?var_export($_POST['related_songs'],true):'(unset)')."\n"
+            ."POST[related_poems]=".(isset($_POST['related_poems'])?var_export($_POST['related_poems'],true):'(unset)')."\n"
+            ."POST[related_reflections]=".(isset($_POST['related_reflections'])?var_export($_POST['related_reflections'],true):'(unset)')."\n"
+            ."POST[related_people]=".(isset($_POST['related_people'])?var_export($_POST['related_people'],true):'(unset)')."\n"
+            ."POST[directors]=".(isset($_POST['directors'])?var_export($_POST['directors'],true):'(unset)')."\n"
+            ."---\n", FILE_APPEND);
         // Handle thumbnail upload
         $thumbnail_Image = '';
         if (!empty($_FILES['thumbnail_Image']['name'])) {
             $config['upload_path'] = FCPATH . 'uploads/thumbnails/'; // Folder path
-            $config['allowed_types'] = 'jpg|jpeg|png|gif';
+            if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
+            $config['allowed_types'] = 'jpg|jpeg|png|gif|webp|avif';
             $config['max_size'] = 2048; // 2MB
-            $config['file_name'] = time() . '_' . $_FILES['thumbnail_Image']['name'];
+            $config['file_name'] = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnail_Image']['name']);
             $this->load->library('upload', $config);
             if ($this->upload->do_upload('thumbnail_Image')) {
                 $uploadData = $this->upload->data();
@@ -248,7 +267,7 @@ class FilmController extends CI_Controller {
             $data[] = [
                 'id' => $ep->id,
                 'sl_no' => $sl_no++,
-                'date_of_upload' => $ep->date_of_upload ?? '',
+                'date_of_upload' => !empty($ep->date_of_upload) ? date('d-m-Y H:i', strtotime($ep->date_of_upload)) : '—',
                 'main_title' => $mainTitle,
                 'episode_no' => $ep->episode_no ?? '',
                 'film_episode_title' => $ep->film_episode_title ?? '',
@@ -280,9 +299,10 @@ class FilmController extends CI_Controller {
     // ✅ 1. Thumbnail Upload Handling
     $thumbnail_image = $this->input->post('old_thumbnail_image'); // पुरानी image by default
     if (!empty($_FILES['thumbnail_image_upload']['name'])) {
-        $config['upload_path'] = './uploads/thumbnails/';
-        $config['allowed_types'] = 'jpg|jpeg|png|gif';
-        $config['file_name'] = time().'_'.$_FILES['thumbnail_image_upload']['name'];
+        $config['upload_path'] = FCPATH . 'uploads/thumbnails/';
+        if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
+        $config['allowed_types'] = 'jpg|jpeg|png|gif|webp|avif';
+        $config['file_name'] = time().'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnail_image_upload']['name']);
 
         $this->load->library('upload', $config);
 
@@ -317,7 +337,7 @@ class FilmController extends CI_Controller {
         'youtube_id' => $this->input->post('youtube_id'),
         'publish' => $this->input->post('publish'),
         'meta_title' => $this->input->post('meta_title'),
-        'meta_keyword' => $this->input->post('meta_keyword'),
+        'meta_keyword' => $this->input->post('meta_keywords') ?? $this->input->post('meta_keyword'),
         'meta_description' => $this->input->post('meta_description'),
     ];
 
@@ -353,9 +373,10 @@ public function save_filmEpisode() {
 
     // 1. Image Upload Logic
     if (!empty($_FILES['thumbnail_image_upload']['name'])) {
-        $config['upload_path'] = './uploads/thumbnails/';
-        $config['allowed_types'] = 'jpg|jpeg|png|gif';
-        $config['file_name'] = time() . '_' . $_FILES['thumbnail_image_upload']['name'];
+        $config['upload_path'] = FCPATH . 'uploads/thumbnails/';
+        if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
+        $config['allowed_types'] = 'jpg|jpeg|png|gif|webp|avif';
+        $config['file_name'] = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnail_image_upload']['name']);
 
         $this->load->library('upload', $config);
 
@@ -371,7 +392,11 @@ public function save_filmEpisode() {
         $thumbnail_image = $this->input->post('old_thumbnail_image') ?? 'default.jpg';
     }
 
-    // 2. Data array (only fields present in the form)
+    // 2. Data array (scalar + related fields used by sync_episode_relations)
+    $arrToCsv = function ($v) {
+        if (is_array($v)) return implode(',', array_filter($v, function ($x) { return trim((string)$x) !== ''; }));
+        return (string)($v ?? '');
+    };
     $data = [
         'film_episode_title' => $this->input->post('film_episode_title'),
         'main_title' => $this->input->post('main_title'),
@@ -384,8 +409,15 @@ public function save_filmEpisode() {
         'youtube_link' => $this->input->post('youtube_link'),
         'publish' => $this->input->post('publish'),
         'meta_title' => $this->input->post('meta_title'),
-        'meta_keyword' => $this->input->post('meta_keyword'),
+        'meta_keyword' => $this->input->post('meta_keywords') ?? $this->input->post('meta_keyword'),
         'meta_description' => $this->input->post('meta_description'),
+        // Related-content arrays for junction sync
+        'related_keywords'    => $arrToCsv($this->input->post('related_keywords')),
+        'related_songs'       => $arrToCsv($this->input->post('related_songs')),
+        'related_poems'       => $arrToCsv($this->input->post('related_poems')),
+        'related_reflections' => $arrToCsv($this->input->post('episode_related_reflections') ?: $this->input->post('related_reflections')),
+        'related_people'      => $arrToCsv($this->input->post('episode_related_people') ?: $this->input->post('related_people')),
+        'related_films'       => $arrToCsv($this->input->post('episode_related_films') ?: $this->input->post('related_films')),
         'date_of_upload' => date('Y-m-d H:i:s') // Always set current date/time
     ];
 
@@ -466,6 +498,320 @@ public function ajax_create_language() {
     ]);
 }
 
+    /**
+     * Add song from film/episode "Add New" (JSON body: { "name": "..." }) — stores in `songs` table.
+     */
+    public function ajax_add_song() {
+        $this->output->set_content_type('application/json');
+        $title = '';
+        $raw = json_decode((string) file_get_contents('php://input'), true);
+        if (is_array($raw) && isset($raw['name'])) {
+            $title = trim((string) $raw['name']);
+        }
+        if ($title === '') {
+            $title = trim((string) $this->input->post('umbrellaTitle'));
+        }
+        if ($title === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Song title required']);
+            return;
+        }
+        
+        // Check if songs table exists
+        if (!$this->db->table_exists('songs')) {
+            echo json_encode(['status' => 'error', 'message' => 'songs table not found']);
+            return;
+        }
+        
+        // Check for duplicate
+        $existing = $this->db->where('umbrellaTitle', $title)->get('songs')->row_array();
+        if (!empty($existing)) {
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Song already exists',
+                'id' => (string) $existing['id'],
+                'umbrellaTitle' => $title
+            ]);
+            return;
+        }
+        
+        // Insert new song
+        $data = [
+            'umbrellaTitle' => $title,
+            'date_of_upload' => date('Y-m-d H:i:s')
+        ];
+        
+        $inserted = $this->db->insert('songs', $data);
+        if (!$inserted) {
+            echo json_encode(['status' => 'error', 'message' => 'Failed to add song']);
+            return;
+        }
+        
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Song added successfully',
+            'id' => (string) $this->db->insert_id(),
+            'umbrellaTitle' => $title
+        ]);
+    }
+
+    /**
+     * Add poem from film/episode "Add New" (JSON body: { "name": "..." }) — stores in `couplet` table.
+     */
+    public function ajax_add_poem() {
+        $this->output->set_content_type('application/json');
+        $title = '';
+        $raw = json_decode((string) file_get_contents('php://input'), true);
+        if (is_array($raw) && isset($raw['name'])) {
+            $title = trim((string) $raw['name']);
+        }
+        if ($title === '') {
+            $title = trim((string) $this->input->post('original_title'));
+        }
+        if ($title === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Poem title required']);
+            return;
+        }
+        
+        // Check if couplet table exists
+        if (!$this->db->table_exists('couplet')) {
+            echo json_encode(['status' => 'error', 'message' => 'couplet table not found']);
+            return;
+        }
+        
+        // Check for duplicate
+        $existing = $this->db->where('original_title', $title)->get('couplet')->row_array();
+        if (!empty($existing)) {
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Poem already exists',
+                'id' => (string) $existing['id'],
+                'original_title' => $title
+            ]);
+            return;
+        }
+        
+        // Insert new poem
+        $data = [
+            'original_title' => $title,
+            'date_of_upload' => date('Y-m-d H:i:s')
+        ];
+        
+        $inserted = $this->db->insert('couplet', $data);
+        if (!$inserted) {
+            echo json_encode(['status' => 'error', 'message' => 'Failed to add poem']);
+            return;
+        }
+        
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Poem added successfully',
+            'id' => (string) $this->db->insert_id(),
+            'original_title' => $title
+        ]);
+    }
+
+    /**
+     * Add reflection from film/episode "Add New" (JSON body: { "name": "..." }) — stores in `reflection` table.
+     */
+    public function ajax_add_reflection() {
+        $this->output->set_content_type('application/json');
+        $title = '';
+        $raw = json_decode((string) file_get_contents('php://input'), true);
+        if (is_array($raw) && isset($raw['name'])) {
+            $title = trim((string) $raw['name']);
+        }
+        if ($title === '') {
+            $title = trim((string) $this->input->post('title'));
+        }
+        if ($title === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Reflection title required']);
+            return;
+        }
+        
+        // Check if reflection table exists
+        if (!$this->db->table_exists('reflection')) {
+            echo json_encode(['status' => 'error', 'message' => 'reflection table not found']);
+            return;
+        }
+        
+        // Check for duplicate
+        $existing = $this->db->where('title', $title)->get('reflection')->row_array();
+        if (!empty($existing)) {
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Reflection already exists',
+                'id' => (string) $existing['id'],
+                'title' => $title
+            ]);
+            return;
+        }
+        
+        // Insert new reflection
+        $data = [
+            'title' => $title,
+            'date_of_upload' => date('Y-m-d H:i:s')
+        ];
+        
+        $inserted = $this->db->insert('reflection', $data);
+        if (!$inserted) {
+            echo json_encode(['status' => 'error', 'message' => 'Failed to add reflection']);
+            return;
+        }
+        
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Reflection added successfully',
+            'id' => (string) $this->db->insert_id(),
+            'title' => $title
+        ]);
+    }
+
+    /**
+     * Add film from film/episode "Add New" (JSON body: { "name": "..." }) — stores in `film` table.
+     */
+    public function ajax_add_film() {
+        $this->output->set_content_type('application/json');
+        $title = '';
+        $raw = json_decode((string) file_get_contents('php://input'), true);
+        if (is_array($raw) && isset($raw['name'])) {
+            $title = trim((string) $raw['name']);
+        }
+        if ($title === '') {
+            $title = trim((string) $this->input->post('main_title'));
+        }
+        if ($title === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Film title required']);
+            return;
+        }
+        
+        // Check if film table exists
+        if (!$this->db->table_exists('film')) {
+            echo json_encode(['status' => 'error', 'message' => 'film table not found']);
+            return;
+        }
+        
+        // Check for duplicate
+        $existing = $this->db->where('english_transliteration', $title)->or_where('main_title', $title)->get('film')->row_array();
+        if (!empty($existing)) {
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Film already exists',
+                'id' => (string) $existing['id'],
+                'main_title' => $title
+            ]);
+            return;
+        }
+        
+        // Insert new film
+        $data = [
+            'english_transliteration' => $title,
+            'main_title' => $title,
+            'date_of_upload' => date('Y-m-d H:i:s')
+        ];
+        
+        $inserted = $this->db->insert('film', $data);
+        if (!$inserted) {
+            echo json_encode(['status' => 'error', 'message' => 'Failed to add film']);
+            return;
+        }
+        
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Film added successfully',
+            'id' => (string) $this->db->insert_id(),
+            'main_title' => $title
+        ]);
+    }
+
+    /**
+     * Add film episode from film/episode "Add New" (JSON body: { "name": "..." }) — stores in `film_episode` table.
+     */
+    public function ajax_add_film_episode() {
+        $this->output->set_content_type('application/json');
+        $title = '';
+        $raw = json_decode((string) file_get_contents('php://input'), true);
+        if (is_array($raw) && isset($raw['name'])) {
+            $title = trim((string) $raw['name']);
+        }
+        if ($title === '') {
+            $title = trim((string) $this->input->post('film_episode_title'));
+        }
+        if ($title === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Film episode title required']);
+            return;
+        }
+        
+        // Check if film_episode table exists
+        if (!$this->db->table_exists('film_episode')) {
+            echo json_encode(['status' => 'error', 'message' => 'film_episode table not found']);
+            return;
+        }
+        
+        // Check for duplicate
+        $existing = $this->db->where('english_transliteration', $title)->or_where('film_episode_title', $title)->get('film_episode')->row_array();
+        if (!empty($existing)) {
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Film episode already exists',
+                'id' => (string) $existing['id'],
+                'film_episode_title' => $title
+            ]);
+            return;
+        }
+        
+        // Insert new film episode
+        $data = [
+            'english_transliteration' => $title,
+            'film_episode_title' => $title,
+            'date_of_upload' => date('Y-m-d H:i:s')
+        ];
+        
+        $inserted = $this->db->insert('film_episode', $data);
+        if (!$inserted) {
+            echo json_encode(['status' => 'error', 'message' => 'Failed to add film episode']);
+            return;
+        }
+        
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Film episode added successfully',
+            'id' => (string) $this->db->insert_id(),
+            'film_episode_title' => $title
+        ]);
+    }
+
+    /**
+     * Add keyword from film/episode "Add New" (JSON body: { "name": "..." }) — stores in `word` table.
+     */
+    public function ajax_add_keyword() {
+        $this->output->set_content_type('application/json');
+        $word = '';
+        $raw = json_decode((string) file_get_contents('php://input'), true);
+        if (is_array($raw) && isset($raw['name'])) {
+            $word = trim((string) $raw['name']);
+        }
+        if ($word === '') {
+            $word = trim((string) $this->input->post('word_transliteration'));
+        }
+        if ($word === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Keyword required']);
+            return;
+        }
+        $row = $this->WordModel->get_or_create_word_keyword($word);
+        if ($row === null) {
+            echo json_encode([
+                'status' => 'error',
+                'message' => $this->db->table_exists('word') ? 'Failed to save keyword' : 'word table not found',
+            ]);
+            return;
+        }
+        echo json_encode([
+            'status' => 'success',
+            'id' => (string) $row['id'],
+            'word_transliteration' => $row['word_transliteration'],
+            'message' => 'Keyword added successfully',
+        ]);
+    }
 
 
 

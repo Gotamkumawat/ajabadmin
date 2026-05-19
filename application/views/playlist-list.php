@@ -42,11 +42,11 @@ include('inc/sidebar.php');
                 
 
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="playlistTableCount">0</span></div>
                     <table id="playlistTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
-                                <th>Date Created</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Playlist Name</th>
                                 <th>Description</th>
                                 <th>Total Tracks</th>
@@ -81,8 +81,7 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no', title: 'Sl. No.', responsivePriority: 1 },
-            { data: 'created_at', title: 'Date Created' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'name', title: 'Playlist Name' },
             { data: 'description', title: 'Description' },
             { data: 'track_count', title: 'Total Tracks' },
@@ -101,6 +100,7 @@ $(document).ready(function() {
                 }
             }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('playlistTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

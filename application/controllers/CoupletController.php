@@ -20,28 +20,36 @@ class CoupletController extends CI_Controller {
     }
 
     public function save() {
+        $editId = (int) $this->input->post('id');
+        if ($editId > 0) {
+            // edit submission — delegate to update flow
+            $this->update($editId);
+            return;
+        }
         $original_title = $this->input->post('original_title');
         $couplet_transliteration = $this->input->post('couplet_transliteration');
         $couplet_translation = $this->input->post('couplet_translation');
         $poet = $this->input->post('poet'); // FIX: get 'poet' not 'poet_id'
         $attributed_poet = $this->input->post('attributed_poet');
         $translator = $this->input->post('translator');
-        // Handle audio file upload
+        // Handle audio file upload (auto-create dir; non-blocking on error)
         $audio_file = '';
         if (!empty($_FILES['audio_file']['name'])) {
-            $config['upload_path'] = FCPATH . 'uploads/audio/'; // Folder path
-            $config['allowed_types'] = 'mp3|wav|ogg|m4a';
-            $config['max_size'] = 10240; // 10MB
-            $config['file_name'] = time() . '_' . $_FILES['audio_file']['name'];
-            $this->upload->initialize($config);
+            $audioDir = FCPATH . 'uploads/audio/';
+            if (!is_dir($audioDir)) { @mkdir($audioDir, 0755, true); }
+            $this->load->library('upload');
+            $audioConfig = [
+                'upload_path'   => $audioDir,
+                'allowed_types' => 'mp3|wav|ogg|m4a',
+                'max_size'      => 10240,
+                'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['audio_file']['name']),
+            ];
+            $this->upload->initialize($audioConfig);
             if ($this->upload->do_upload('audio_file')) {
                 $uploadData = $this->upload->data();
                 $audio_file = 'uploads/audio/' . $uploadData['file_name'];
-            } else {
-                $this->session->set_flashdata('error', $this->upload->display_errors());
-                redirect('add-couplet');
-                return;
             }
+            // If upload fails, just skip audio — don't block save
         } else {
             $audio_file = $this->input->post('audio_file'); // Fallback if no upload
         }
@@ -52,6 +60,14 @@ class CoupletController extends CI_Controller {
         $related_films = $this->input->post('related_films');
         $related_film_episodes = $this->input->post('related_film_episodes');
         $keywords = $this->input->post('keywords');
+        if (empty($keywords)) {
+            $kw = $this->input->post('relatedkeywords');
+            if (is_array($kw)) {
+                $keywords = implode(',', array_filter($kw, function ($x) { return trim($x) !== ''; }));
+            } elseif ($kw !== null) {
+                $keywords = (string) $kw;
+            }
+        }
         $original_text = $this->input->post('original_text');
         $english_transliteration_text = $this->input->post('english_transliteration_text');
         $english_translation_text = $this->input->post('english_translation_text');
@@ -62,19 +78,24 @@ class CoupletController extends CI_Controller {
         $meta_keywords = $this->input->post('meta_keywords');
         $meta_description = $this->input->post('meta_description');
         $is_published = $this->input->post('is_published');
+        $thumbnail_excerpt = $this->input->post('thumbnail_excerpt');
 
         $thumbnail = '';
         if (!empty($_FILES['thumbnailUrl']['name'])) {
-            $config['upload_path'] = FCPATH . 'uploads/thumbnails/'; // Folder path
-            $config['allowed_types'] = 'jpg|jpeg|png|gif|avif';
-            $config['max_size'] = 2048; // 2MB
-            $config['file_name'] = time() . '_' . $_FILES['thumbnailUrl']['name'];
-            $this->upload->initialize($config);
+            $thumbDir = FCPATH . 'images/';
+            if (!is_dir($thumbDir)) { @mkdir($thumbDir, 0755, true); }
+            $this->load->library('upload');
+            $thumbConfig = [
+                'upload_path'   => $thumbDir,
+                'allowed_types' => 'jpg|jpeg|png|gif|avif',
+                'max_size'      => 2048,
+                'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnailUrl']['name']),
+            ];
+            $this->upload->initialize($thumbConfig);
             if ($this->upload->do_upload('thumbnailUrl')) {
                 $uploadData = $this->upload->data();
-                $thumbnail = 'uploads/thumbnails/' . $uploadData['file_name'];
+                $thumbnail = 'images/' . $uploadData['file_name'];
             } else {
-                // Handle error, maybe set flashdata
                 $this->session->set_flashdata('error', $this->upload->display_errors());
                 redirect('add-couplet');
                 return;
@@ -86,27 +107,47 @@ class CoupletController extends CI_Controller {
             }
         }
 
+        // poet_id column is INT — store first/single poet; preserve all in junction table.
+        $poetIdInt = 0;
+        if (is_array($poet)) {
+            foreach ($poet as $p) { $p = (int) $p; if ($p > 0) { $poetIdInt = $p; break; } }
+        } else {
+            $poetIdInt = (int) $poet;
+        }
+
+        // Helper: serialize only non-empty arrays; otherwise store empty string (avoids "N;" stored garbage)
+        $serializeOrEmpty = function ($v) {
+            if (is_array($v)) {
+                $clean = array_values(array_filter(array_map('strval', $v), function ($x) { return trim($x) !== ''; }));
+                return !empty($clean) ? serialize($clean) : '';
+            }
+            $s = trim((string) $v);
+            return $s !== '' ? $s : '';
+        };
+
         $data = array(
             'original_title' => $original_title,
             'couplet_transliteration' => $couplet_transliteration,
             'couplet_translation' => $couplet_translation,
-            'poet_id' => serialize($poet),
-            'attributed_poet' => serialize($attributed_poet),
-            'translator' => serialize($translator),
+            'poet_id' => $poetIdInt,
+            'attributed_poet' => $serializeOrEmpty($attributed_poet),
+            'translator' => $serializeOrEmpty($translator),
             // 'audio_file' => $audio_file, // No longer saving in couplet table
-            'related_songs' => serialize($related_songs),
-            'related_reflections' => serialize($related_reflections),
-            'related_poems' => serialize($related_poems),
-            'related_people' => serialize($related_people),
-            'related_films' => serialize($related_films),
-            'related_film_episodes' => serialize($related_film_episodes),
+            'related_songs' => $serializeOrEmpty($related_songs),
+            'related_reflections' => $serializeOrEmpty($related_reflections),
+            'related_poems' => $serializeOrEmpty($related_poems),
+            'related_people' => $serializeOrEmpty($related_people),
+            'related_films' => $serializeOrEmpty($related_films),
+            'related_film_episodes' => $serializeOrEmpty($related_film_episodes),
             'keywords' => $keywords,
             'original_text' => $original_text,
             'english_transliteration_text' => $english_transliteration_text,
             'english_translation_text' => $english_translation_text,
             'note_text' => $note_text,
             'glossary' => $glossary,
+            'thumbnail_url' => $thumbnail,
             'thumbnail_image_upload' => $thumbnail,
+            'thumbnail_excerpt' => $thumbnail_excerpt,
             'meta_title' => $meta_title,
             'meta_keywords' => $meta_keywords,
             'meta_description' => $meta_description,
@@ -121,15 +162,109 @@ class CoupletController extends CI_Controller {
             $couplet_id = (int) $this->db->insert_id();
             $this->CoupletModel->sync_couplet_translations($couplet_id, $english_translation_text, $extra_translation_text);
             $this->sync_couplet_poet_table($couplet_id, $poet, $attributed_poet);
+            $this->sync_couplet_related_all($couplet_id);
             if ($audio_file) {
-                $audio_url = base_url($audio_file);
-                $this->db->insert('couplet_audio', [
-                    'couplet_id' => $couplet_id,
-                    'soundcloud_track_id' => $audio_url
-                ]);
+                $this->sync_couplet_audio($couplet_id, $audio_file);
             }
+            $this->session->set_flashdata('success', 'Couplet saved successfully!');
+            redirect('couplets-list');
+            return;
+        } else {
+            $dbErr = $this->db->error();
+            $msg = !empty($dbErr['message']) ? $dbErr['message'] : 'Failed to save couplet';
+            $this->session->set_flashdata('error', $msg);
         }
         redirect('add-couplet');
+    }
+
+    /**
+     * Generic helper: replace junction rows for a couplet with given IDs.
+     * @param string $table   junction table name
+     * @param string $fkCol   foreign-key column on junction (e.g. 'word_id')
+     * @param int    $coupletId
+     * @param mixed  $ids     array, CSV string, or null
+     */
+    private function sync_couplet_junction($table, $fkCol, $coupletId, $ids) {
+        if (!$this->db->table_exists($table)) return;
+        $coupletId = (int) $coupletId;
+        if ($coupletId <= 0) return;
+        $clean = [];
+        if (is_array($ids)) {
+            foreach ($ids as $v) { $v = (int) $v; if ($v > 0) { $clean[$v] = true; } }
+        } elseif ($ids !== null && trim((string)$ids) !== '') {
+            foreach (explode(',', (string)$ids) as $v) { $v = (int) trim($v); if ($v > 0) { $clean[$v] = true; } }
+        }
+        $this->db->where('couplet_id', $coupletId)->delete($table);
+        foreach (array_keys($clean) as $vid) {
+            $this->db->insert($table, ['couplet_id' => $coupletId, $fkCol => $vid]);
+        }
+    }
+
+    /**
+     * Sync ALL related-content junction tables from posted form fields.
+     */
+    private function sync_couplet_related_all($coupletId) {
+        $this->sync_couplet_junction('couplet_word',           'word_id',            $coupletId, $this->input->post('relatedkeywords'));
+        $this->sync_couplet_junction('couplet_song',           'song_id',            $coupletId, $this->input->post('related_songs'));
+        $this->sync_couplet_junction('couplet_reflection',     'reflection_id',      $coupletId, $this->input->post('related_reflections'));
+        $this->sync_couplet_junction('couplet_relatedcouplet', 'related_couplet_id', $coupletId, $this->input->post('related_poems'));
+        $this->sync_couplet_junction('couplet_film',           'film_id',            $coupletId, $this->input->post('related_films'));
+        $this->sync_couplet_junction('couplet_filmepisode',    'film_episode_id',    $coupletId, $this->input->post('related_film_episodes'));
+        $this->sync_couplet_junction('couplet_people',         'person_id',          $coupletId, $this->input->post('related_people'));
+    }
+
+    /**
+     * Replace couplet_audio row(s) with single audio URL.
+     */
+    private function sync_couplet_audio($coupletId, $audioPathOrUrl) {
+        if (!$this->db->table_exists('couplet_audio')) return;
+        $coupletId = (int) $coupletId;
+        if ($coupletId <= 0) return;
+        $this->db->where('couplet_id', $coupletId)->delete('couplet_audio');
+        $audio = trim((string) $audioPathOrUrl);
+        if ($audio === '') return;
+        // Make sure we store full URL when path is relative
+        if (!preg_match('#^https?://#i', $audio)) {
+            $audio = base_url($audio);
+        }
+        $this->db->insert('couplet_audio', [
+            'couplet_id'         => $coupletId,
+            'soundcloud_track_id' => $audio,
+        ]);
+    }
+
+    /**
+     * Mirror keyword selections into couplet_word (junction table).
+     * Accepts $keywords as array of word IDs, CSV string, or null.
+     */
+    private function sync_couplet_word_table($coupletId, $keywords) {
+        if (!$this->db->table_exists('couplet_word')) {
+            return;
+        }
+        $coupletId = (int) $coupletId;
+        if ($coupletId <= 0) {
+            return;
+        }
+        $ids = [];
+        if (is_array($keywords)) {
+            foreach ($keywords as $k) {
+                $k = (int) $k;
+                if ($k > 0) { $ids[$k] = true; }
+            }
+        } elseif ($keywords !== null && trim((string)$keywords) !== '') {
+            foreach (explode(',', (string)$keywords) as $k) {
+                $k = (int) trim($k);
+                if ($k > 0) { $ids[$k] = true; }
+            }
+        }
+        // Wipe existing junction rows for this couplet
+        $this->db->where('couplet_id', $coupletId)->delete('couplet_word');
+        foreach (array_keys($ids) as $wid) {
+            $this->db->insert('couplet_word', [
+                'couplet_id' => $coupletId,
+                'word_id'    => $wid,
+            ]);
+        }
     }
 
     /**
@@ -221,6 +356,15 @@ class CoupletController extends CI_Controller {
             return $fullName !== '' ? $fullName : 'Unnamed';
         };
 
+        // Batch-load all persons once to avoid N+1 queries
+        $personById = [];
+        if ($this->db->table_exists('person')) {
+            $allPersons = $this->db->select('id, first_name, middle_name, last_name')->get('person')->result_array();
+            foreach ($allPersons as $p) {
+                $personById[(int) $p['id']] = $p;
+            }
+        }
+
         foreach ($couplets as $row) {
             $idSet = [];
             foreach ($collect_person_ids($row['poet_id'] ?? '') as $pid) {
@@ -243,17 +387,17 @@ class CoupletController extends CI_Controller {
             }
             $names = [];
             foreach (array_keys($idSet) as $personId) {
-                $person = $this->db->get_where('person', ['id' => $personId])->row_array();
-                if ($person) {
-                    $names[] = $person_full_name($person);
+                if (isset($personById[$personId])) {
+                    $names[] = $person_full_name($personById[$personId]);
                 }
             }
-            $poetNames = implode(', ', $names);
+            $poetNames = !empty($names) ? implode(', ', $names) : '—';
             $data[] = array(
                 'sl_no' => $sl_no++,
                 'created_at' => !empty($row['created_at']) ? date('d M Y', strtotime($row['created_at'])) : '—',
-                'original_title' => $row['original_title'],
-                'couplet_transliteration' => $row['couplet_transliteration'],
+                'original_title' => $row['original_title'] ?? '',
+                'couplet_transliteration' => $row['couplet_transliteration'] ?? '',
+                'couplet_translation' => $row['couplet_translation'] ?? '',
                 'poet_id' => $poetNames,
                 'is_published' => $row['is_published'] ? 'Yes' : 'No',
                 'action' => '<a href="'.base_url('edit-couplet/'.$row['id']).'" class="btn btn-info btn-sm">Edit</a>
@@ -301,33 +445,71 @@ class CoupletController extends CI_Controller {
 
         // 🟢 Update existing record
         public function update($id) {
+            $id = (int) $id;
+            if ($id <= 0) { redirect('couplets-list'); return; }
+            @file_put_contents(FCPATH . 'couplet_update_debug.log',
+                "[".date('Y-m-d H:i:s')."] couplet update id=$id\n"
+                ."POST keys: ".implode(',', array_keys($_POST))."\n"
+                ."POST[thumbnailUrl_existing]=".(isset($_POST['thumbnailUrl_existing'])?var_export($_POST['thumbnailUrl_existing'],true):'(unset)')."\n"
+                ."FILES[thumbnailUrl][name]=".(isset($_FILES['thumbnailUrl']['name'])?var_export($_FILES['thumbnailUrl']['name'],true):'(unset)')."\n"
+                ."---\n", FILE_APPEND);
             $poet_post = $this->input->post('poet');
             $attributed_poet_post = $this->input->post('attributed_poet');
             $data = $this->input->post();
             unset($data['thumbnailUrl_existing']);
-            // serialize arrays
-            $array_fields = ['poet', 'attributed_poet', 'translator', 'soundcloud_urls', 'related_songs', 'related_reflections', 'related_poems', 'related_people', 'related_films', 'related_film_episodes'];
+            unset($data['id']);
+            unset($data['extra_translation_text']);
+            unset($data['audio_file']);
+            // serialize arrays for text columns — empty arrays become empty string (not "N;")
+            $array_fields = ['attributed_poet', 'translator', 'soundcloud_urls', 'related_songs', 'related_reflections', 'related_poems', 'related_people', 'related_films', 'related_film_episodes'];
             foreach($array_fields as $field) {
-                if(isset($data[$field]) && is_array($data[$field])) {
-                    $data[$field] = serialize($data[$field]);
+                if(isset($data[$field])) {
+                    if (is_array($data[$field])) {
+                        $clean = array_values(array_filter(array_map('strval', $data[$field]), function ($x) { return trim($x) !== ''; }));
+                        $data[$field] = !empty($clean) ? serialize($clean) : '';
+                    }
                 }
             }
-            // rename keys to match db columns
-            $data['poet_id'] = $data['poet'];
+            // poet_id column is INT — store first/single poet; preserve all in junction table.
+            $poetIdInt = 0;
+            if (is_array($poet_post)) {
+                foreach ($poet_post as $p) { $p = (int) $p; if ($p > 0) { $poetIdInt = $p; break; } }
+            } else {
+                $poetIdInt = (int) $poet_post;
+            }
+            $data['poet_id'] = $poetIdInt;
             unset($data['poet']);
-            $data['soundCloud_track_url'] = $data['soundcloud_urls'];
-            unset($data['soundcloud_urls']);
-            // Thumbnail: same pattern as song (keep existing path unless new file uploaded)
+            // relatedkeywords[] (multi-select) → keywords CSV column
+            if (isset($data['relatedkeywords'])) {
+                $kw = $data['relatedkeywords'];
+                if (is_array($kw)) {
+                    $data['keywords'] = implode(',', array_filter($kw, function ($x) { return trim($x) !== ''; }));
+                } else {
+                    $data['keywords'] = (string) $kw;
+                }
+                unset($data['relatedkeywords']);
+            }
+            if (isset($data['soundcloud_urls'])) {
+                $data['soundCloud_track_url'] = $data['soundcloud_urls'];
+                unset($data['soundcloud_urls']);
+            }
+            // Thumbnail: upload to /images, save in thumbnail_url + thumbnail_image_upload
             if (!empty($_FILES['thumbnailUrl']['name'])) {
+                $thumbDir = FCPATH . 'images/';
+                if (!is_dir($thumbDir)) { @mkdir($thumbDir, 0755, true); }
                 $this->load->library('upload');
-                $config['upload_path'] = FCPATH . 'uploads/thumbnails/';
-                $config['allowed_types'] = 'jpg|jpeg|png|gif|avif';
-                $config['max_size'] = 2048;
-                $config['file_name'] = time() . '_' . $_FILES['thumbnailUrl']['name'];
-                $this->upload->initialize($config);
+                $thumbConfig = [
+                    'upload_path'   => $thumbDir,
+                    'allowed_types' => 'jpg|jpeg|png|gif|avif',
+                    'max_size'      => 2048,
+                    'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnailUrl']['name']),
+                ];
+                $this->upload->initialize($thumbConfig);
                 if ($this->upload->do_upload('thumbnailUrl')) {
                     $upload_data = $this->upload->data();
-                    $data['thumbnail_image_upload'] = 'uploads/thumbnails/' . $upload_data['file_name'];
+                    $newPath = 'images/' . $upload_data['file_name'];
+                    $data['thumbnail_url'] = $newPath;
+                    $data['thumbnail_image_upload'] = $newPath;
                 } else {
                     $this->session->set_flashdata('error', $this->upload->display_errors());
                     redirect('couplets-list');
@@ -336,15 +518,38 @@ class CoupletController extends CI_Controller {
             } else {
                 $existingThumb = $this->input->post('thumbnailUrl_existing');
                 if ($existingThumb !== null && $existingThumb !== '') {
+                    $data['thumbnail_url'] = $existingThumb;
                     $data['thumbnail_image_upload'] = $existingThumb;
                 }
             }
             $data = $this->CoupletModel->swap_transliteration_translation_columns($data);
+            // Filter to actual couplet table columns only
+            $coupletCols = $this->db->list_fields('couplet');
+            $data = array_intersect_key($data, array_flip($coupletCols));
             $this->CoupletModel->update_couplet($id, $data);
             $translationPayload = $this->input->post('english_translation_text');
             $extraTranslationPayload = $this->input->post('extra_translation_text');
             $this->CoupletModel->sync_couplet_translations((int)$id, $translationPayload, $extraTranslationPayload);
             $this->sync_couplet_poet_table((int) $id, $poet_post, $attributed_poet_post);
+            $this->sync_couplet_related_all((int) $id);
+            // Audio: handle uploaded file first, then post-existing
+            if (!empty($_FILES['audio_file']['name'])) {
+                $audioDir = FCPATH . 'uploads/audio/';
+                if (!is_dir($audioDir)) { @mkdir($audioDir, 0755, true); }
+                $this->load->library('upload');
+                $audioConfig = [
+                    'upload_path'   => $audioDir,
+                    'allowed_types' => 'mp3|wav|ogg|m4a',
+                    'max_size'      => 10240,
+                    'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['audio_file']['name']),
+                ];
+                $this->upload->initialize($audioConfig);
+                if ($this->upload->do_upload('audio_file')) {
+                    $up = $this->upload->data();
+                    $this->sync_couplet_audio((int) $id, 'uploads/audio/' . $up['file_name']);
+                }
+            }
+            $this->session->set_flashdata('success', 'Couplet updated successfully!');
             redirect('couplets-list');
         }
 

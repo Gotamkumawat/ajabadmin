@@ -41,10 +41,11 @@ include('inc/sidebar.php');
                     <a href="<?php echo base_url('add-occupation'); ?>" class="btn btn-primary btn-sm">Add Occupation</a>
                 </div>
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="occupationTableCount">0</span></div>
                     <table id="occupationTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Occupation Name</th>
                                 <th>Action</th>
                             </tr>
@@ -75,7 +76,7 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no', title: 'Sl. No.' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'name', title: 'Occupation Name' },
             {
                 data: 'id',
@@ -88,6 +89,7 @@ $(document).ready(function() {
                 }
             }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('occupationTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

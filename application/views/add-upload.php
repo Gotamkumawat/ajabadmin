@@ -339,11 +339,8 @@ include('inc/sidebar.php');
 document.getElementById('cartoonForm').addEventListener('submit', function(e) {
   e.preventDefault();
 
-  const fields = [
-    { id: 'title', name: 'Title' },
-    { id: 'thumbnail_url', name: 'Cartoon Thumbnail URL' },
-    { id: 'is_published', name: 'Publish Status' }
-  ];
+  // Only fields marked with red `*` in the form are required (currently none).
+  const fields = [];
 
   for (let field of fields) {
     let el = document.getElementById(field.id);

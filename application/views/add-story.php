@@ -752,32 +752,8 @@ include('inc/sidebar.php');
     // Client-side form validation
     document.getElementById('storyForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        const fields = [
-            { id: 'main_title', name: 'Main Title' },
-            { id: 'second_title', name: 'Second Title' },
-            { id: 'author', name: 'Author\'s' },
-            { id: 'verb', name: 'Verb' },
-            { id: 'description', name: 'Description Text' },
-            { id: 'songLyricsOriginal', name: 'Notes' },
-            { id: 'category', name: 'Category' },
-            { id: 'thumbnail_url', name: 'Story Thumbnail Url' },
-            { id: 'is_echo', name: 'Is this Story an Echo' },
-            { id: 'is_class_room_idea', name: 'Is this Story a Classroom Idea' },
-            { id: 'is_class_room_experiment', name: 'Classroom Experiment' },
-            { id: 'related_songs', name: 'Related Songs' },
-            { id: 'related_couplets', name: 'Related Couplets' },
-            { id: 'related_words', name: 'Related Words' },
-            { id: 'related_reflections', name: 'Related Reflections' },
-            { id: 'related_people', name: 'Related People' },
-            { id: 'related_films', name: 'Related Films' },
-            { id: 'related_filmEpisode', name: 'Related FilmEpisode' },
-            { id: 'is_story', name: 'Display on Stories Page' },
-            { id: 'show_on_landing_page', name: 'Show On Landing Page' },
-            { id: 'is_published', name: 'Publish' },
-            { id: 'meta_title', name: 'Meta Title' },
-            { id: 'meta_keywords', name: 'Meta Keyword' },
-            { id: 'meta_description', name: 'Meta Description' }
-        ];
+        // Only fields marked with red `*` in the form are required (currently none).
+        const fields = [];
 
         for (let field of fields) {
             let element = document.getElementById(field.id);

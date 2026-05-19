@@ -54,7 +54,7 @@ class AddNew extends CI_Controller {
 	}
 			public function resource()
 	{
-		$this->load->view('add-resource');
+		redirect('add_new');
 	}
 			public function upload()
 	{
@@ -91,14 +91,35 @@ class AddNew extends CI_Controller {
 	public function ajabShahar($id = null)
 	{
 		$data = [];
+		if (!$this->db->table_exists('ajab_menus')) {
+			$sql = "CREATE TABLE IF NOT EXISTS `ajab_menus` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`slug` VARCHAR(100) NOT NULL,
+				`label` VARCHAR(150) NOT NULL,
+				`sort_order` INT(11) NOT NULL DEFAULT 0,
+				`created_at` DATETIME NULL,
+				PRIMARY KEY (`id`),
+				UNIQUE KEY `slug` (`slug`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+			$this->db->query($sql);
+			$seed = [
+				['slug' => 'intro',          'label' => 'Intro',          'sort_order' => 1],
+				['slug' => 'translit guide', 'label' => 'Translit Guide', 'sort_order' => 2],
+				['slug' => 'copyrights',     'label' => 'Copyrights',     'sort_order' => 3],
+			];
+			foreach ($seed as $r) {
+				$r['created_at'] = date('Y-m-d H:i:s');
+				$this->db->insert('ajab_menus', $r);
+			}
+		}
+		$ajabMenus = $this->db->order_by('sort_order', 'ASC')->order_by('id', 'ASC')->get('ajab_menus')->result();
+		$typeMap = [];
+		foreach ($ajabMenus as $m) { $typeMap[(int)$m->id] = $m->slug; }
+		$data['ajab_menus'] = $ajabMenus;
+
 		if ($id !== null && is_numeric($id) && $this->db->table_exists('about')) {
 			$row = $this->db->where('id', (int)$id)->where('status', 0)->get('about')->row();
 			if (!empty($row)) {
-				$typeMap = [
-					1 => 'intro',
-					2 => 'translit guide',
-					3 => 'copyrights'
-				];
 				$row->type_label = isset($typeMap[(int)$row->ajab_type]) ? $typeMap[(int)$row->ajab_type] : '';
 				$data['ajab_shahar'] = $row;
 			}
@@ -109,15 +130,41 @@ class AddNew extends CI_Controller {
 	public function kabirProject($id = null)
 	{
 		$data = [];
+		// Ensure dynamic kabir_menus table exists & load menus
+		$this->load->library('session');
+		$this->load->helper('url');
+		// Lazy create table if missing (mirrors AddAboutController helper)
+		if (!$this->db->table_exists('kabir_menus')) {
+			$sql = "CREATE TABLE IF NOT EXISTS `kabir_menus` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`slug` VARCHAR(100) NOT NULL,
+				`label` VARCHAR(150) NOT NULL,
+				`sort_order` INT(11) NOT NULL DEFAULT 0,
+				`created_at` DATETIME NULL,
+				PRIMARY KEY (`id`),
+				UNIQUE KEY `slug` (`slug`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+			$this->db->query($sql);
+			$seed = [
+				['slug' => 'intro',         'label' => 'Intro',         'sort_order' => 1],
+				['slug' => 'team',          'label' => 'Team',          'sort_order' => 2],
+				['slug' => 'films',         'label' => 'Films',         'sort_order' => 3],
+				['slug' => 'books',         'label' => 'Books',         'sort_order' => 4],
+				['slug' => 'shabad shaala', 'label' => 'Shabad Shaala', 'sort_order' => 5],
+			];
+			foreach ($seed as $r) {
+				$r['created_at'] = date('Y-m-d H:i:s');
+				$this->db->insert('kabir_menus', $r);
+			}
+		}
+		$kabirMenus = $this->db->order_by('sort_order', 'ASC')->order_by('id', 'ASC')->get('kabir_menus')->result();
+		$typeMap = [];
+		foreach ($kabirMenus as $m) { $typeMap[(int)$m->id] = $m->slug; }
+		$data['kabir_menus'] = $kabirMenus;
+
 		if ($id !== null && is_numeric($id) && $this->db->table_exists('about')) {
 			$row = $this->db->where('id', (int)$id)->where('status', 1)->get('about')->row();
 			if (!empty($row)) {
-				$typeMap = [
-					1 => 'intro team',
-					2 => 'films',
-					3 => 'books',
-					4 => 'shabad shaala'
-				];
 				$row->type_label = isset($typeMap[(int)$row->kabir_type]) ? $typeMap[(int)$row->kabir_type] : '';
 				$data['kabir_project'] = $row;
 			}

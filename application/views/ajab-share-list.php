@@ -16,7 +16,7 @@ include('inc/sidebar.php');
         <div class="container-fluid">
             <div class="row mb-2">
                 <div class="col-sm-6">
-                    <h1>Ajab Shahar List</h1>
+                    <h1>Ajab share List</h1>
                 </div>
                 <div class="col-sm-6">
                     <ol class="breadcrumb float-sm-right">
@@ -39,11 +39,11 @@ include('inc/sidebar.php');
             <?php endif; ?>
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="aboutheaderTableCount">0</span></div>
                     <table id="aboutheaderTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
-                                <th>Date of Upload</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Type</th>
                                 <th>Visual Content</th>
                                 <th>Action</th>
@@ -76,8 +76,7 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no', title: 'Sl. No.' },
-            { data: 'date_of_upload', title: 'Date of Upload' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'type', title: 'Type' },
             { data: 'visual_content', title: 'Visual Content' },
             {
@@ -93,6 +92,7 @@ $(document).ready(function() {
                 }
             }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('aboutheaderTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

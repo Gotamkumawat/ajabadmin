@@ -194,7 +194,7 @@ public function insert_film($data) {
                 'meta_title' => $data['meta_title'] ?? null,
                 'meta_keywords' => $data['meta_keyword'] ?? ($data['meta_keywords'] ?? null),
                 'meta_description' => $data['meta_description'] ?? null,
-                'is_published' => isset($data['publish']) && ($data['publish'] === 'true' || $data['publish'] === 1 || $data['publish'] === '1') ? 1 : 0,
+                'is_published' => isset($data['publish']) && in_array(strtolower((string)$data['publish']), ['1', 'true', 'yes', 'on'], true) ? 1 : 0,
             ];
             $this->apply_optional_film_language_fields($filmData, $data);
             $filmData = array_filter($filmData, function ($v) { return $v !== null; });
@@ -293,12 +293,14 @@ public function insert_film($data) {
     public function update_filmEpisode($id, $data) {
         if ($this->db->table_exists('film_episode')) {
             $payload = $this->map_to_film_episode_payload($data);
-            $this->db->where('id', $id);
-            $updated = $this->db->update('film_episode', $payload);
-            if ($updated) {
-                $this->sync_episode_relations((int)$id, $data);
+            $payload = array_filter($payload, function ($v) { return $v !== null; });
+            if (!empty($payload)) {
+                $this->db->where('id', $id);
+                $this->db->update('film_episode', $payload);
             }
-            return $updated;
+            // Always sync relations regardless of scalar update return
+            $this->sync_episode_relations((int)$id, $data);
+            return true;
         }
         $this->db->where('id', $id);
         return $this->db->update('film_episode_details', $data);
@@ -326,6 +328,8 @@ public function insert_film($data) {
             'about_text' => $data['about_text'] ?? null,
             'description' => $data['about_text'] ?? null,
             'thumbnail_url' => $data['thumbnail_image_upload'] ?? null,
+            'thumbnail_excerpt' => $data['thumbnail_excerpt'] ?? null,
+            'year_of_production' => $data['year'] ?? null,
             'youtube_video_id' => $data['youtube_link'] ?? ($data['youtube_id'] ?? null),
             'film_id' => $data['main_title'] ?? null,
             'show_on_landing_page' => isset($data['show_on_landing_page']) ? $toBoolInt($data['show_on_landing_page']) : null,
@@ -370,9 +374,27 @@ public function insert_film($data) {
         if ($filmId <= 0 || !is_array($data)) {
             return;
         }
-        $songsCsv = trim((string)($data['related_primary_songs'] ?? ($data['related_songs'] ?? '')));
-        $poemsCsv = trim((string)($data['related_couplets'] ?? ($data['related_poems'] ?? '')));
-        $keywordsCsv = trim((string)($data['related_words'] ?? ($data['related_keywords'] ?? '')));
+        @file_put_contents(FCPATH . 'film_sync_debug.log',
+            "[".date('Y-m-d H:i:s')."] sync_film_relations filmId=$filmId\n"
+            ."data[related_songs]=".(isset($data['related_songs'])?var_export($data['related_songs'],true):'(unset)')."\n"
+            ."data[related_primary_songs]=".(isset($data['related_primary_songs'])?var_export($data['related_primary_songs'],true):'(unset)')."\n"
+            ."data[related_keywords]=".(isset($data['related_keywords'])?var_export($data['related_keywords'],true):'(unset)')."\n"
+            ."data[related_words]=".(isset($data['related_words'])?var_export($data['related_words'],true):'(unset)')."\n"
+            ."---\n", FILE_APPEND);
+        // Prefer non-empty value (?? only catches null/unset, not empty string)
+        $pickFirstNonEmpty = function () use ($data) {
+            foreach (func_get_args() as $key) {}
+            $args = func_get_args();
+            foreach ($args as $key) {
+                if (isset($data[$key]) && trim((string)$data[$key]) !== '') {
+                    return trim((string)$data[$key]);
+                }
+            }
+            return '';
+        };
+        $songsCsv    = $pickFirstNonEmpty('related_primary_songs', 'related_songs');
+        $poemsCsv    = $pickFirstNonEmpty('related_couplets', 'related_poems');
+        $keywordsCsv = $pickFirstNonEmpty('related_words', 'related_keywords');
 
         $this->sync_relation_table('film_director', 'film_id', 'director_id', $filmId, (string)($data['directors'] ?? ''));
         $this->sync_relation_table('film_primary_people', 'film_id', 'person_id', $filmId, (string)($data['related_people'] ?? ''));
@@ -395,6 +417,7 @@ public function insert_film($data) {
         $this->sync_relation_table('film_episode_people', 'film_episode_id', 'people_id', $episodeId, $peopleCsv);
         $this->sync_relation_table('film_episode_people', 'film_episode_id', 'person_id', $episodeId, $peopleCsv);
         $this->sync_relation_table('film_episode_word', 'film_episode_id', 'word_id', $episodeId, (string)($data['related_keywords'] ?? ''));
+        $this->sync_relation_table('film_episode_film', 'film_episode_id', 'film_id', $episodeId, (string)($data['related_films'] ?? ''));
     }
 
     private function normalize_film_episode_row($row) {
@@ -416,6 +439,15 @@ public function insert_film($data) {
         $r->year = isset($r->year_of_production) ? (string)$r->year_of_production : (isset($r->year) ? (string)$r->year : '');
         $r->publish = (isset($r->is_published) && ((string)$r->is_published === '1' || $r->is_published === true)) ? 'true' : 'false';
         $r->meta_keyword = isset($r->meta_keywords) ? (string)$r->meta_keywords : (isset($r->meta_keyword) ? (string)$r->meta_keyword : '');
+        // Pull date_of_upload from legacy film_episode_details when normalized table lacks it
+        if ((!isset($r->date_of_upload) || trim((string)$r->date_of_upload) === '') && isset($r->id)) {
+            if ($this->db->table_exists('film_episode_details')) {
+                $legacy = $this->db->select('date_of_upload')->from('film_episode_details')->where('id', (int)$r->id)->get()->row_array();
+                if ($legacy && !empty($legacy['date_of_upload'])) {
+                    $r->date_of_upload = $legacy['date_of_upload'];
+                }
+            }
+        }
 
         // Populate related-content CSV fields from junction tables for edit preselection.
         $episodeId = isset($r->id) ? (int)$r->id : 0;

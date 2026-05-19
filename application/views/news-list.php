@@ -37,13 +37,14 @@ include 'inc/sidebar.php';
 
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="newsTableCount">0</span></div>
                     <table id="newsTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
-                                <!-- <th>News Title</th> -->
-                                <th>Pop Up News Title</th>
-                                <th>Published (Yes/No)</th>
+                                <th style="width:50px;">Sl.No</th>
+                                <th>News Title</th>
+                                <th>Sequence Order</th>
+                                <th>Display in Pop Up</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -92,12 +93,13 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'id', title: 'Sl. No.' },
-            // { data: 'news_title', title: 'News Title' },
-            { data: 'popup_item', title: 'Pop Up News Title' },
-            { data: 'published', title: 'Published (Yes/No)' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
+            { data: 'news_title', title: 'News Title' },
+            { data: 'sequence_order', title: 'Sequence Order' },
+            { data: 'display_in_popup', title: 'Display in Pop Up' },
             { data: 'action', title: 'Action' }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('newsTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

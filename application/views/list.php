@@ -96,19 +96,6 @@ include('inc/sidebar.php');
           </a>
         </div>
 
-        <div class="col-lg-2 col-md-4 col-sm-6">
-          <a href="occupation-list" style="text-decoration: none;">
-            <div class="small-box bg-info" style="cursor: pointer;">
-              <div class="inner">
-                <h3 style="color: white; font-size: 20px; margin: 8px 0;">Occupation</h3>
-              </div>
-              <div class="icon">
-                <i class="fas fa-briefcase" style="font-size: 20px;"></i>
-              </div>
-            </div>
-          </a>
-        </div>
-
         <!-- Films -->
         <div class="col-lg-2 col-md-4 col-sm-6">
           <a href="filmsSectionList" style="text-decoration: none;">
@@ -212,7 +199,7 @@ include('inc/sidebar.php');
           <a href="radio-list" style="text-decoration: none;">
             <div class="small-box bg-info" style="cursor: pointer;">
               <div class="inner">
-                <h3 style="color: white; font-size: 20px; margin: 8px 0;">Radio Track</h3>
+                <h3 style="color: white; font-size: 20px; margin: 8px 0;">Radio</h3>
               </div>
               <div class="icon">
                 <i class="fas fa-smile-beam" style="font-size: 20px;"></i>
@@ -247,19 +234,7 @@ include('inc/sidebar.php');
             </div>
           </a>
         </div>
-        <div class="col-lg-2 col-md-4 col-sm-6">
-          <a href="glossary-lists" style="text-decoration: none;">
-            <div class="small-box bg-info" style="cursor: pointer;">
-              <div class="inner">
-                <h3 style="color: white; font-size: 20px; margin: 8px 0;">Glossary</h3>
-              </div>
-              <div class="icon">
-                <i class="fas fa-newspaper" style="font-size: 20px;"></i>
-              </div>
-            </div>
-          </a>
-        </div>
-        <div class="col-lg-2 col-md-4 col-sm-6">
+        <!-- <div class="col-lg-2 col-md-4 col-sm-6">
           <a href="playlist-lists" style="text-decoration: none;">
             <div class="small-box bg-info" style="cursor: pointer;">
               <div class="inner">
@@ -270,7 +245,7 @@ include('inc/sidebar.php');
               </div>
             </div>
           </a>
-        </div>
+        </div> -->
       </div><!-- /.row -->
     </div><!-- /.container-fluid -->
   </section><!-- /.content -->

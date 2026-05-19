@@ -28,12 +28,12 @@ include 'inc/sidebar.php';
         <div class="container-fluid">
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="songsTableCount">0</span></div>
                     <table id="songsTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                          <th>Sl. No.</th>
-                                              <th>Date of Upload</th>
-                                              <th>Song Title (Transliteration)</th>
+                                <th style="width:50px;">Sl.No</th>
+                                <th>Song Title (Transliteration)</th>
                                               <th>Singer</th>
                                               <th>Poet</th>
                                               <th>Published (Yes/No)</th>
@@ -69,14 +69,14 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'id', title: 'Sl. No.' },
-            { data: 'upload_date', title: 'Date of Upload' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'song_title', title: 'Song Title (Transliteration)' },
             { data: 'singer', title: 'Singer' },
             { data: 'poet', title: 'Poet' },
             { data: 'published', title: 'Published (Yes/No)' },
             { data: 'action', title: 'Action' }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('songsTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

@@ -4,15 +4,15 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class CoupletModel extends CI_Model {
 
     /**
-     * Legacy DB stores poem title + poem body transliteration/translation in swapped columns
-     * relative to labels. Exchange pairs so UI "Transliteration" / "Translation" match intent.
-     * Applying on read and again before write keeps storage stable (swap is self-inverse).
+     * Legacy DB stores poem title transliteration/translation in swapped columns relative
+     * to UI labels. Apply on both read AND write — swap is self-inverse, so storage stays
+     * stable while UI shows the right field for the right label.
      */
     public function swap_transliteration_translation_columns(array $row) {
         if (array_key_exists('couplet_transliteration', $row) || array_key_exists('couplet_translation', $row)) {
-            $x = $row['couplet_transliteration'] ?? '';
+            $tmp = $row['couplet_transliteration'] ?? '';
             $row['couplet_transliteration'] = $row['couplet_translation'] ?? '';
-            $row['couplet_translation'] = $x;
+            $row['couplet_translation'] = $tmp;
         }
         return $row;
     }

@@ -43,14 +43,14 @@ include('inc/sidebar.php');
             <?php endif; ?>
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="filmEpisodeTableCount">0</span></div>
                     <table id="filmEpisodeTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
-                                <th>Date of Upload</th>
-                                <th>Main Title</th>
-                                <th>Episode No</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Film Episode Title</th>
+                                <th>Film Title</th>
+                                <th>Episode No</th>
                                 <th>Publish</th>
                                 <th>Action</th>
                             </tr>
@@ -68,9 +68,11 @@ include('inc/sidebar.php');
 <!-- DataTables & jQuery -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/4.3.0/css/fixedColumns.dataTables.min.css">
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+<script src="https://cdn.datatables.net/fixedcolumns/4.3.0/js/dataTables.fixedColumns.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
@@ -82,12 +84,15 @@ $('#filmEpisodeTable').DataTable({
         dataSrc: 'data'
     },
     columns: [
-        { data: 'sl_no', title: 'Sl. No.' },
-        { data: 'date_of_upload', title: 'Date of Upload' },
-        { data: 'main_title', title: 'Main Title' },
-        { data: 'episode_no', title: 'Episode No' },
+        { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
         { data: 'film_episode_title', title: 'Film Episode Title' },
-        { data: 'publish', title: 'Publish', render: function(data) { return data == 'true' ? 'Yes' : 'No'; } },
+        { data: 'main_title', title: 'Film Title' },
+        { data: 'episode_no', title: 'Episode No' },
+        { data: 'publish', title: 'Publish', render: function(data) {
+            if (data === 1 || data === '1' || data === true) return 'Yes';
+            if (typeof data === 'string' && ['true','yes','y','1'].indexOf(data.toLowerCase()) !== -1) return 'Yes';
+            return 'No';
+        } },
         {
             data: 'id',
             title: 'Action',
@@ -102,10 +107,19 @@ $('#filmEpisodeTable').DataTable({
         }
     ],
 
+    order: [[1, 'asc']],          // Default sort: Film Episode Title alphabetically (A→Z)
+    fixedColumns: { left: 2 },    // Freeze Sl.No + Film Episode Title columns
+    columnDefs: [{ targets: 0, orderable: false }],
     scrollX: true,
     scrollCollapse: true,
     responsive: false,
-    autoWidth: true
+    autoWidth: true,
+    drawCallback: function (settings) {
+        var api = this.api();
+        var total = api.page.info().recordsTotal;
+        var el = document.getElementById('filmEpisodeTableCount');
+        if (el) el.textContent = total;
+    }
 });
 
 

@@ -2,6 +2,8 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 $route['SongController/ajax_create_keyword'] = 'SongController/ajax_create_keyword';
+$route['SongController/ajax_get_title_row'] = 'SongController/ajax_get_title_row';
+$route['SongController/ajax_save_title_row'] = 'SongController/ajax_save_title_row';
 $route['SongController/ajax_create_song'] = 'SongController/ajax_create_song';
 $route['SongController/ajax_create_reflection'] = 'SongController/ajax_create_reflection';
 $route['SongController/ajax_create_poem'] = 'SongController/ajax_create_poem';
@@ -124,6 +126,7 @@ $route['person/edit/(:num)'] = 'PersonController/edit/$1';
 $route['person/update/(:num)'] = 'PersonController/update/$1';
 $route['person/delete/(:num)'] = 'PersonController/delete/$1';
 $route['person/occupation/create'] = 'PersonController/ajax_create_occupation';
+$route['person/occupation/update'] = 'PersonController/ajax_update_occupation';
 $route['add-occupation'] = 'OccupationController/add';
 $route['occupation/edit/(:num)'] = 'OccupationController/add/$1';
 $route['occupation/save'] = 'OccupationController/save';
@@ -143,6 +146,7 @@ $route['fetch-radio'] = 'RadioController/fetch_radio';
 $route['add-radio'] = 'RadioController/add_radio'; // same view for add/edit
 $route['add-radio/(:num)'] = 'RadioController/add_radio/$1';
 $route['radio/save'] = 'RadioController/save';
+$route['radio/ajax_song_meta'] = 'RadioController/ajax_song_meta';
 $route['radio/delete/(:num)'] = 'RadioController/delete/$1';
 
 
@@ -190,10 +194,28 @@ $route['ajab-shahar'] = 'addNew/ajabShahar';
 $route['ajab-shahar/edit/(:num)'] = 'addNew/ajabShahar/$1';
 $route['ajab-shahar/save'] = 'AddAboutController/save_ajab_shahar';
 $route['ajab-shahar/update/(:num)'] = 'AddAboutController/update_ajab_shahar/$1';
+$route['ajab-shahar/menus'] = 'AddAboutController/get_ajab_menus';
+$route['ajab-shahar/menus/create'] = 'AddAboutController/create_ajab_menu';
+$route['ajab-shahar/menus/delete/(:num)'] = 'AddAboutController/delete_ajab_menu/$1';
 $route['kabir-project'] = 'addNew/kabirProject';
 $route['kabir-project/edit/(:num)'] = 'addNew/kabirProject/$1';
 $route['kabir-project/save'] = 'AddAboutController/save_kabir_project';
 $route['kabir-project/update/(:num)'] = 'AddAboutController/update_kabir_project/$1';
+$route['kabir-project/menus'] = 'AddAboutController/get_kabir_menus';
+$route['kabir-project/menus/create'] = 'AddAboutController/create_kabir_menu';
+$route['kabir-project/menus/delete/(:num)'] = 'AddAboutController/delete_kabir_menu/$1';
+
+// Generic dynamic About sections
+$route['about-section/sections']                          = 'AboutSection/sections_list';
+$route['about-section/sections/create']                   = 'AboutSection/sections_create';
+$route['about-section/sections/delete/(:num)']            = 'AboutSection/sections_delete/$1';
+$route['about-section/(:any)/menus']                      = 'AboutSection/menus_list/$1';
+$route['about-section/(:any)/menus/create']               = 'AboutSection/menus_create/$1';
+$route['about-section/(:any)/menus/delete/(:num)']        = 'AboutSection/menus_delete/$1/$2';
+$route['about-section/(:any)/save']                       = 'AboutSection/save/$1';
+$route['about-section/(:any)/update/(:num)']              = 'AboutSection/update/$1/$2';
+$route['about-section/(:any)/edit/(:num)']                = 'AboutSection/index/$1/$2';
+$route['about-section/(:any)']                            = 'AboutSection/index/$1';
 
 
 $route['about-images'] = 'addNew/aboutImages';

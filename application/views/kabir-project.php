@@ -309,38 +309,77 @@ include('inc/sidebar.php');
                         $currentType = isset($kabir_project->type_label) ? $kabir_project->type_label : '';
                         $currentVisualContent = isset($kabir_project->visual_content) ? $kabir_project->visual_content : '';
                         $currentId = isset($kabir_project->id) ? (int)$kabir_project->id : 0;
+                        $currentMenuImage = isset($kabir_project->menu_image) ? trim((string)$kabir_project->menu_image) : '';
+                        // Logo is shared across all Kabir Project menu tabs — fetch from any saved row
+                        if ($currentMenuImage === '' && $this->db->table_exists('about')) {
+                            $sharedImg = $this->db->select('menu_image')
+                                ->from('about')
+                                ->where('status', 1)
+                                ->where('menu_image IS NOT NULL', null, false)
+                                ->where("TRIM(menu_image) !=", '')
+                                ->order_by('id', 'DESC')
+                                ->limit(1)
+                                ->get()->row_array();
+                            if (!empty($sharedImg['menu_image'])) {
+                                $currentMenuImage = trim((string)$sharedImg['menu_image']);
+                            }
+                        }
                     ?>
 
                     <form name="aboutForm" id="aboutForm" method="post" enctype="multipart/form-data" action="<?php echo base_url('kabir-project/save'); ?>" data-save-url="<?php echo base_url('kabir-project/save'); ?>" data-update-base-url="<?php echo base_url('kabir-project/update'); ?>">
+                        <!-- Logo (visible across all menu tabs — kept above the menu selector) -->
                         <div class="row">
                             <div class="col-md-12 form-group">
-                                <label>Menu <span style="color:red">*</span></label>
+                                <label>Logo</label>
+                                <input type="hidden" name="menu_image_existing" id="menu_image_existing" value="<?php echo htmlspecialchars($currentMenuImage); ?>">
+                                <input type="file" name="menu_image" id="menu_image" class="form-control" accept="image/*" style="max-width: 360px;">
+                                <div id="menu_image_preview_wrap" style="margin-top:8px;<?php echo $currentMenuImage === '' ? 'display:none;' : ''; ?>">
+                                    <img id="menu_image_preview" src="<?php echo $currentMenuImage !== '' ? base_url(ltrim($currentMenuImage, '/')) : ''; ?>" alt="Logo" style="max-width:200px; max-height:120px; border:1px solid #ced4da; padding:4px; border-radius:4px;">
+                                    <div class="text-muted small">Current logo (shared across all menu tabs). Choose a new file to replace.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12 form-group">
+                                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                                    <label style="margin:0;">Menu <span style="color:red">*</span></label>
+                                    <button type="button" id="addKabirMenuBtn" class="btn btn-success btn-sm">
+                                        <i class="fa fa-plus"></i> Add New
+                                    </button>
+                                </div>
                                 <input type="hidden" name="type" id="type" value="<?php echo htmlspecialchars($currentType, ENT_QUOTES, 'UTF-8'); ?>">
                                 <input type="hidden" id="entry_id" value="<?php echo $currentId; ?>">
 
                                 <div id="kabirMenuSwitch" class="kabir-menu-grid">
-                                    <button type="button" class="kabir-menu-btn" data-type="intro">
-                                        <span class="menu-title">Intro</span>
-                                        <span class="menu-state" id="menuStateIntro">Not Saved</span>
+                                    <?php
+                                        $kabirMenusList = isset($kabir_menus) && is_array($kabir_menus) ? $kabir_menus : [];
+                                        foreach ($kabirMenusList as $m):
+                                            $slug = htmlspecialchars($m->slug, ENT_QUOTES, 'UTF-8');
+                                            $label = htmlspecialchars($m->label, ENT_QUOTES, 'UTF-8');
+                                    ?>
+                                    <button type="button" class="kabir-menu-btn" data-type="<?php echo $slug; ?>" data-id="<?php echo (int)$m->id; ?>">
+                                        <span class="menu-title"><?php echo $label; ?></span>
+                                        <span class="menu-state">Not Saved</span>
                                     </button>
-                                    <button type="button" class="kabir-menu-btn" data-type="team">
-                                        <span class="menu-title">Team</span>
-                                        <span class="menu-state" id="menuStateTeam">Not Saved</span>
-                                    </button>
-                                    <button type="button" class="kabir-menu-btn" data-type="films">
-                                        <span class="menu-title">Films</span>
-                                        <span class="menu-state" id="menuStateFilms">Not Saved</span>
-                                    </button>
-                                    <button type="button" class="kabir-menu-btn" data-type="books">
-                                        <span class="menu-title">Books</span>
-                                        <span class="menu-state" id="menuStateBooks">Not Saved</span>
-                                    </button>
-                                    <button type="button" class="kabir-menu-btn" data-type="shabad shaala">
-                                        <span class="menu-title">Shabad Shaala</span>
-                                        <span class="menu-state" id="menuStateShabad">Not Saved</span>
-                                    </button>
+                                    <?php endforeach; ?>
                                 </div>
                                 <div id="selectedMenuInfo">Select a menu section to add/edit content.</div>
+                            </div>
+                        </div>
+
+                        <!-- Add New Menu Modal -->
+                        <div id="kabirAddMenuModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
+                            <div style="background:#fff; width:420px; max-width:92%; border-radius:8px; padding:18px; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+                                <h5 style="margin:0 0 12px;">Add New Menu</h5>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label for="kabirNewMenuName">Menu Name</label>
+                                    <input type="text" id="kabirNewMenuName" class="form-control" placeholder="e.g. Workshops" maxlength="100">
+                                </div>
+                                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                    <button type="button" class="btn btn-secondary" id="kabirAddMenuCancel">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="kabirAddMenuSave">Add</button>
+                                </div>
                             </div>
                         </div>
 
@@ -348,8 +387,38 @@ include('inc/sidebar.php');
                             <div class="col-md-12 form-group">
                                 <label>Visual Content Editor</label>
                                 <input type="file" id="mediaImageInput" accept="image/*" multiple style="display:none;">
-                                <textarea class="form-control" name="meta_description" id="meta_description" rows="14" style="display:none;"><?php echo $currentVisualContent; ?></textarea>
+                                <textarea class="form-control" name="visual_content" id="visual_content_textarea" rows="14" style="display:none;"><?php echo $currentVisualContent; ?></textarea>
                                 <div id="gjs"></div>
+                            </div>
+                        </div>
+
+                        <!-- Meta Data Section -->
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <h4>Meta Data</h4>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <div class="form-group">
+                                            <label for="meta_title">Meta Title</label>
+                                            <input type="text" name="meta_title" id="meta_title" class="form-control" 
+                                                   value="<?php echo isset($kabir_project) ? htmlspecialchars($kabir_project->meta_title) : ''; ?>" 
+                                                   placeholder="Enter meta title">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="meta_keywords">Meta Keywords</label>
+                                            <input type="text" name="meta_keywords" id="meta_keywords" class="form-control" 
+                                                   value="<?php echo isset($kabir_project) ? htmlspecialchars($kabir_project->meta_keywords) : ''; ?>" 
+                                                   placeholder="Enter meta keywords (comma separated)">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="meta_description">Meta Description</label>
+                                            <textarea name="meta_description" id="meta_description" class="form-control" rows="4" 
+                                                      placeholder="Enter meta description"><?php echo isset($kabir_project) ? htmlspecialchars($kabir_project->meta_description) : ''; ?></textarea>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -374,21 +443,27 @@ include('inc/sidebar.php');
 $(document).ready(function() {
     let builder = null;
     let currentEntryId = '';
-    const menuTypes = ['intro', 'team', 'films', 'books', 'shabad shaala'];
+    let menuTypes = <?php
+        $slugs = [];
+        if (!empty($kabirMenusList)) { foreach ($kabirMenusList as $m) { $slugs[] = $m->slug; } }
+        echo json_encode($slugs);
+    ?>;
+    let menuLabels = <?php
+        $labels = [];
+        if (!empty($kabirMenusList)) { foreach ($kabirMenusList as $m) { $labels[$m->slug] = $m->label; } }
+        echo json_encode((object)$labels);
+    ?>;
     const aboutApiUrl = <?php echo json_encode(base_url('Api/about')); ?>;
+    const menusListUrl = <?php echo json_encode(base_url('kabir-project/menus')); ?>;
+    const menusCreateUrl = <?php echo json_encode(base_url('kabir-project/menus/create')); ?>;
     const initialEntry = <?php echo json_encode([
         'id' => $currentId,
         'type' => $currentType,
         'visual_content' => $currentVisualContent
     ]); ?>;
 
-    const menuEntries = {
-        'intro': null,
-        'team': null,
-        'films': null,
-        'books': null,
-        'shabad shaala': null
-    };
+    const menuEntries = {};
+    menuTypes.forEach(function(t){ menuEntries[t] = null; });
 
     const starterTemplate = `
 <section style="max-width: 900px; margin: 0 auto; padding: 10px 0;">
@@ -439,18 +514,15 @@ $(document).ready(function() {
     };
 
     const formatMenuTitle = function(type) {
-        if (type === 'shabad shaala') {
-            return 'Shabad Shaala';
-        }
+        if (menuLabels && menuLabels[type]) return menuLabels[type];
         return type.charAt(0).toUpperCase() + type.slice(1);
     };
 
     const setMenuStates = function() {
-        $('#menuStateIntro').text(menuEntries['intro'] ? 'Saved' : 'Not Saved');
-        $('#menuStateTeam').text(menuEntries['team'] ? 'Saved' : 'Not Saved');
-        $('#menuStateFilms').text(menuEntries['films'] ? 'Saved' : 'Not Saved');
-        $('#menuStateBooks').text(menuEntries['books'] ? 'Saved' : 'Not Saved');
-        $('#menuStateShabad').text(menuEntries['shabad shaala'] ? 'Saved' : 'Not Saved');
+        $('#kabirMenuSwitch .kabir-menu-btn').each(function(){
+            const t = ($(this).data('type') || '').toString();
+            $(this).find('.menu-state').text(menuEntries[t] ? 'Saved' : 'Not Saved');
+        });
     };
 
     const activateMenu = function(type) {
@@ -468,10 +540,29 @@ $(document).ready(function() {
 
         setBuilderContent(entry && entry.visual_content ? entry.visual_content : '');
 
+        // Logo is now shared across all menu tabs — no per-tab swap needed.
+
+        // Populate Meta fields from menu entry (auto-load when switching menu)
+        $('#meta_title').val(entry && entry.meta_title ? String(entry.meta_title) : '');
+        $('#meta_keywords').val(entry && entry.meta_keywords ? String(entry.meta_keywords) : '');
+        $('#meta_description').val(entry && entry.meta_description ? String(entry.meta_description) : '');
+
         const isExisting = !!currentEntryId;
         $('.save-btn').text(isExisting ? 'Update' : 'Save');
         $('#selectedMenuInfo').text(formatMenuTitle(type) + (isExisting ? ' selected (existing entry: will update).' : ' selected (new entry: will save once).'));
     };
+
+    // Live preview when user selects new file
+    $(document).on('change', '#menu_image', function () {
+        const f = this.files && this.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = function (e) {
+            $('#menu_image_preview').attr('src', e.target.result);
+            $('#menu_image_preview_wrap').show();
+        };
+        r.readAsDataURL(f);
+    });
 
     const hydrateFromApi = function() {
         return $.getJSON(aboutApiUrl)
@@ -646,6 +737,55 @@ $(document).ready(function() {
         activateMenu(type);
     });
 
+    // ---- Add New Menu modal ----
+    const $addModal = $('#kabirAddMenuModal');
+    const openAddModal = function(){
+        $('#kabirNewMenuName').val('');
+        $addModal.css('display','flex');
+        setTimeout(function(){ $('#kabirNewMenuName').focus(); }, 50);
+    };
+    const closeAddModal = function(){ $addModal.hide(); };
+
+    $('#addKabirMenuBtn').on('click', openAddModal);
+    $('#kabirAddMenuCancel').on('click', closeAddModal);
+    $addModal.on('click', function(e){ if (e.target === this) closeAddModal(); });
+
+    $('#kabirAddMenuSave').on('click', function(){
+        const name = ($('#kabirNewMenuName').val() || '').trim();
+        if (!name) {
+            Swal.fire({icon:'warning', title:'Missing name', text:'Please enter a menu name'});
+            return;
+        }
+        const $btn = $(this).prop('disabled', true).text('Adding...');
+        $.post(menusCreateUrl, { label: name }, function(resp){
+            if (resp && resp.status && resp.data) {
+                const slug = String(resp.data.slug || '').toLowerCase();
+                const label = String(resp.data.label || name);
+                if (menuTypes.indexOf(slug) === -1) {
+                    menuTypes.push(slug);
+                    menuLabels[slug] = label;
+                    menuEntries[slug] = null;
+                    const $btnEl = $('<button type="button" class="kabir-menu-btn"></button>')
+                        .attr('data-type', slug)
+                        .attr('data-id', resp.data.id || '')
+                        .append($('<span class="menu-title"></span>').text(label))
+                        .append($('<span class="menu-state"></span>').text('Not Saved'));
+                    $('#kabirMenuSwitch').append($btnEl);
+                }
+                closeAddModal();
+                activateMenu(slug);
+                Swal.fire({icon:'success', title:'Menu added', timer:1200, showConfirmButton:false});
+            } else {
+                const msg = (resp && resp.message) ? resp.message : 'Failed to add menu';
+                Swal.fire({icon:'error', title:'Error', text: msg});
+            }
+        }, 'json').fail(function(){
+            Swal.fire({icon:'error', title:'Network error', text:'Could not reach server'});
+        }).always(function(){
+            $btn.prop('disabled', false).text('Add');
+        });
+    });
+
     $('#loadKabirTemplate').on('click', function() {
         if (!builder) {
             return;
@@ -678,7 +818,7 @@ $(document).ready(function() {
             return false;
         }
 
-        $('#meta_description').val(content);
+        $('#visual_content_textarea').val(content);
 
         const $form = $(this);
         const saveUrl = ($form.data('save-url') || '').toString();

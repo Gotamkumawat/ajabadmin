@@ -229,6 +229,20 @@ include('inc/sidebar.php');
                         <div class="alert alert-danger"><?php echo $this->session->flashdata('error'); ?></div>
                     <?php endif; ?>
 
+                    <?php
+                    // Load songs data for dropdown
+                    $songs = [];
+                    if ($this->db->table_exists('songs')) {
+                        try {
+                            // Use correct column name umbrellaTitle with fallback for empty titles
+                            $songs = $this->db->query("SELECT id, umbrellaTitle as songTitle, singer FROM songs ORDER BY umbrellaTitle ASC, singer ASC")->result();
+                            
+                        } catch (Exception $e) {
+                            $songs = [];
+                        }
+                    }
+                    ?>
+
                     <!-- Tabs Navigation -->
                     <ul class="nav nav-tabs" id="playlistTabs" role="tablist">
                         <li class="nav-item">
@@ -305,26 +319,30 @@ include('inc/sidebar.php');
                                 <div class="form-group row align-items-center mb-3">
                                     <label class="col-md-2 col-form-label">Select Track/Song to Add</label>
                                     <div class="col-md-4 d-flex align-items-end" style="gap:10px;">
-                                        <select class="form-control select2" id="track_select">
-                                            <option value="">Select a song...</option>
+                                        <select class="form-control select2" id="track_select" multiple="multiple" data-skip-select2="true" data-single-pick="true" data-placeholder="Select a song...">
                                             <?php if (isset($songs) && !empty($songs)): ?>
                                                 <?php foreach ($songs as $song): ?>
-                                                    <option value="<?php echo $song['id']; ?>" 
-                                                            data-name="<?php echo isset($song['songTitle']) ? htmlspecialchars($song['songTitle']) : ''; ?>"
-                                                            data-artist="<?php echo isset($song['singer']) ? htmlspecialchars($song['singer']) : ''; ?>">
-                                                        <?php echo isset($song['songTitle']) ? $song['songTitle'] : 'Untitled'; ?>
-                                                        <?php if (isset($song['singer']) && !empty($song['singer'])): ?>
-                                                            - <?php echo $song['singer']; ?>
+                                                    <option value="<?php echo $song->id; ?>"
+                                                            data-name="<?php echo isset($song->songTitle) ? htmlspecialchars($song->songTitle) : ''; ?>"
+                                                            data-artist="<?php echo isset($song->singer) ? htmlspecialchars($song->singer) : ''; ?>">
+                                                        <?php
+                                                        $displayTitle = isset($song->songTitle) && !empty(trim($song->songTitle)) ? $song->songTitle : 'Song #' . $song->id;
+                                                        echo htmlspecialchars($displayTitle);
+                                                        ?>
+                                                        <?php if (isset($song->singer) && !empty($song->singer)): ?>
+                                                            - <?php echo $song->singer; ?>
                                                         <?php endif; ?>
                                                     </option>
                                                 <?php endforeach; ?>
                                             <?php endif; ?>
                                         </select>
+                                        
                                         <button type="button" class="btn btn-primary" id="add_track_btn">
                                             <i class="fas fa-plus"></i> Add Track
                                         </button>
                                     </div>
                                 </div>
+                                
 
                                 <div class="form-group row align-items-center">
                                     <label class="col-md-2 col-form-label">Tracks in Playlist</label>
@@ -370,12 +388,8 @@ include('inc/sidebar.php');
 
 <?php include('inc/footer.php'); ?>
 
-<!-- Select2 CSS -->
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-
-<!-- Select2 JS -->
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<!-- Select2 CSS already loaded above; CKEditor + SweetAlert below -->
+<!-- jQuery + Select2 already loaded by header/footer; only page-specific extras here -->
 <script src="https://cdn.ckeditor.com/4.25.1-lts/standard-all/ckeditor.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
@@ -387,6 +401,57 @@ $(document).ready(function() {
         placeholder: "Select an option",
         allowClear: true
     });
+    
+    // Debug Select2 initialization
+    console.log("Select2 initialized");
+    console.log("Songs data available: ", <?php echo json_encode($songs); ?>);
+    
+    // Force-attach Bootstrap Multiselect on track_select (proven UI from add-radio / add-song)
+    function __initTrackMultiselect() {
+        if (!$.fn.multiselect) { setTimeout(__initTrackMultiselect, 100); return; }
+        var $sel = $('#track_select');
+        if (!$sel.length) return;
+        // Destroy any prior Select2 / Multiselect on this element
+        try { if ($sel.data('select2')) $sel.select2('destroy'); } catch (e) {}
+        $sel.siblings('.select2-container').remove();
+        try { if ($sel.data('bs.multiselect')) $sel.multiselect('destroy'); } catch (e) {}
+        if (window.__adminInitMultiSelect) {
+            window.__adminInitMultiSelect($sel);
+        } else {
+            // Fallback minimal init
+            $sel.multiselect({
+                nonSelectedText: 'Select Song',
+                buttonWidth: '100%',
+                enableFiltering: true,
+                enableCaseInsensitiveFiltering: true,
+                filterPlaceholder: 'Search...'
+            });
+        }
+    }
+    setTimeout(__initTrackMultiselect, 200);
+    setTimeout(__initTrackMultiselect, 800);
+
+    // Populate select with songs data after initialization (rebuild Bootstrap Multiselect)
+    setTimeout(function() {
+        if (typeof songs !== 'undefined' && songs.length > 0) {
+            var $sel = $('#track_select');
+            // Only repopulate if PHP didn't render any options
+            if ($sel.find('option').length === 0) {
+                songs.forEach(function(song) {
+                    var displayText = song.songTitle || 'Song #' + song.id;
+                    if (song.singer) {
+                        displayText += ' - ' + song.singer;
+                    }
+                    $sel.append(new Option(displayText, song.id));
+                });
+                if ($sel.data('bs.multiselect') && $.fn.multiselect) {
+                    $sel.multiselect('rebuild');
+                } else {
+                    __initTrackMultiselect();
+                }
+            }
+        }
+    }, 100);
 
     // Initialize CKEditor for description
     CKEDITOR.config.versionCheck = false;
@@ -414,12 +479,25 @@ $(document).ready(function() {
         }, $playlist_tracks)); ?>;
     <?php endif; ?>
 
+    // Single-pick behavior on multi-select: keep only most recent selection
+    $('#track_select').on('change', function () {
+        var vals = $(this).val();
+        if (Array.isArray(vals) && vals.length > 1) {
+            var keep = vals[vals.length - 1];
+            $(this).val([keep]);
+            if ($(this).data('bs.multiselect') && $.fn.multiselect) {
+                $(this).multiselect('refresh');
+            }
+        }
+    });
+
     $('#add_track_btn').on('click', function() {
         const select = $('#track_select');
-        const selectedOption = select.find('option:selected');
-        const trackId = selectedOption.val();
-        const trackName = selectedOption.data('name');
-        const trackArtist = selectedOption.data('artist') || '';
+        var vals = select.val();
+        var trackId = Array.isArray(vals) ? (vals[0] || '') : (vals || '');
+        var selectedOption = trackId ? select.find('option[value="' + trackId + '"]') : $();
+        var trackName = selectedOption.data('name');
+        var trackArtist = selectedOption.data('artist') || '';
 
         if (!trackId) {
             Swal.fire({
@@ -444,7 +522,13 @@ $(document).ready(function() {
 
         tracksList.push({ id: trackId, name: trackName, artist: trackArtist });
         updateTracksList();
-        select.val('').trigger('change');
+        // Reset multi-select to empty
+        select.val([]);
+        if (select.data('bs.multiselect') && $.fn.multiselect) {
+            select.multiselect('refresh');
+        } else {
+            select.trigger('change');
+        }
     });
 
     function updateTracksList() {

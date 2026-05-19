@@ -39,13 +39,14 @@ include('inc/sidebar.php');
             <?php endif; ?>
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="personTableCount">0</span></div>
                     <table id="personTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
-                                <th>Date of Upload</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Person Name</th>
                                 <th>Occupation</th>
+                                <th>Profile Tags</th>
                                 <th>Display in People</th>
                                 <th>Published</th>
                                 <th>Action</th>
@@ -78,10 +79,10 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no', title: 'Sl. No.' },
-            { data: 'date_of_upload', title: 'Date of Upload' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'person_name', title: 'Person Name' },
             { data: 'occupation', title: 'Occupation' },
+            { data: 'profile_tags', title: 'Profile Tags' },
             { data: 'display', title: 'Display in People' },
             { data: 'publish', title: 'Published' },
             {
@@ -97,6 +98,7 @@ $(document).ready(function() {
                 }
             }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('personTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

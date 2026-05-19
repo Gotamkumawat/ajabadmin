@@ -161,23 +161,52 @@ class GlossaryController extends CI_Controller {
                 redirect('playlist-lists');
             }
             $data['playlist'] = $playlist;
-            
-            // Load tracks for this playlist
-            $this->db->select('playlist_tracks.*, songs.songTitle as song_name, songs.singer as artist');
-            $this->db->from('playlist_tracks');
-            $this->db->join('songs', 'songs.id = playlist_tracks.song_id', 'left');
-            $this->db->where('playlist_tracks.playlist_id', $id);
-            $this->db->order_by('playlist_tracks.track_order', 'ASC');
-            $tracks = $this->db->get()->result_array();
+
+            $tracks = [];
+            if ($this->db->table_exists('songs')) {
+                $this->db->select('playlist_tracks.*, songs.songTitle as song_name, songs.singer as artist');
+                $this->db->from('playlist_tracks');
+                $this->db->join('songs', 'songs.id = playlist_tracks.song_id', 'left');
+                $this->db->where('playlist_tracks.playlist_id', (int) $id);
+                $this->db->order_by('playlist_tracks.track_order', 'ASC');
+                $tracks = $this->db->get()->result_array();
+            } elseif ($this->db->table_exists('song')) {
+                $tracks = $this->db->query("
+                    SELECT pt.*,
+                        COALESCE(NULLIF(TRIM(t.english_transliteration), ''), NULLIF(TRIM(t.original_title), ''), CONCAT('Song #', s.id)) AS song_name,
+                        '' AS artist
+                    FROM playlist_tracks pt
+                    LEFT JOIN song s ON s.id = pt.song_id
+                    LEFT JOIN title t ON t.id = s.song_title_id
+                    WHERE pt.playlist_id = ?
+                    ORDER BY pt.track_order ASC
+                ", [(int) $id])->result_array();
+            }
             $data['playlist_tracks'] = $tracks;
         } else {
             $data['playlist'] = null;
             $data['playlist_tracks'] = [];
         }
-        
-        // Get all songs for dropdown
-        $data['songs'] = $this->db->get('songs')->result_array();
-        
+
+        $this->load->model('SongModel');
+        $songTbl = $this->SongModel->song_table_name();
+        if ($songTbl === 'songs') {
+            $data['songs'] = $this->db->query("
+                SELECT id, Songtitle_transliteration AS songTitle, singer
+                FROM songs
+                ORDER BY LOWER(TRIM(Songtitle_transliteration)) ASC, id ASC
+            ")->result_array();
+        } else {
+            $data['songs'] = $this->db->query("
+                SELECT s.id,
+                    COALESCE(NULLIF(TRIM(t.english_transliteration), ''), NULLIF(TRIM(t.original_title), ''), CONCAT('Song #', s.id)) AS songTitle,
+                    '' AS singer
+                FROM song s
+                LEFT JOIN title t ON t.id = s.song_title_id
+                ORDER BY LOWER(TRIM(COALESCE(t.english_transliteration, t.original_title, ''))) ASC, s.id ASC
+            ")->result_array();
+        }
+
         $this->load->view('add-playlist', $data);
     }
 

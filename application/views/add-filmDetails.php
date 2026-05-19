@@ -183,7 +183,9 @@ include('inc/sidebar.php');
                     <?php endif; ?>
 
                     <?php
-                    $keyword_rows = $this->db->query("SELECT id, word_transliteration FROM keywords ORDER BY id DESC")->result();
+                    $keyword_rows = $this->db->table_exists('word')
+                        ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) DESC, id DESC")->result()
+                        : [];
                     $song_rows = $this->db->query("SELECT id, umbrellaTitle FROM songs ORDER BY id DESC")->result();
                     $poem_rows = $this->db->query("SELECT id, COALESCE(NULLIF(couplet_transliteration, ''), original_title) AS poem_label FROM couplet ORDER BY id DESC")->result();
                     $reflection_rows = $this->db->query("SELECT id, title FROM reflection ORDER BY id DESC")->result();
@@ -205,9 +207,31 @@ include('inc/sidebar.php');
                     $selected_film_reflections = isset($film) ? $readSelectedValues($film->related_reflections ?? '') : [];
                     $selected_film_people = isset($film) ? $readSelectedValues($film->related_people ?? '') : [];
 
+                    // Film Episode dropdown options (for "Related Film Episode" multi-select)
+                    $episode_rows = $this->db->table_exists('film_episode')
+                        ? $this->db->query("SELECT id, COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title) AS episode_label FROM film_episode ORDER BY id DESC")->result()
+                        : [];
+                    // Pre-selected episodes for THIS film: read from film_episode_song / film_episode rows linked to this film
+                    $selected_film_episodes = [];
+                    if (isset($film) && !empty($film->id)) {
+                        // Episodes whose film_id equals this film
+                        if ($this->db->table_exists('film_episode')) {
+                            $erows = $this->db->select('id')->from('film_episode')->where('film_id', (int)$film->id)->get()->result_array();
+                            foreach ($erows as $r) { if (!empty($r['id'])) { $selected_film_episodes[] = (string)(int)$r['id']; } }
+                        }
+                        // Fallback: legacy CSV column on film row
+                        if (empty($selected_film_episodes) && isset($film->film_episodes) && trim((string)$film->film_episodes) !== '') {
+                            foreach (array_filter(array_map('trim', explode(',', (string)$film->film_episodes))) as $v) {
+                                if (ctype_digit($v)) { $selected_film_episodes[] = (string)(int)$v; }
+                            }
+                        }
+                        $selected_film_episodes = array_values(array_unique($selected_film_episodes));
+                    }
                     $selected_episode_keywords = isset($filmEpisode) ? $readSelectedValues($filmEpisode->related_keywords ?? '') : [];
                     $selected_episode_songs = isset($filmEpisode) ? $readSelectedValues($filmEpisode->related_songs ?? '') : [];
                     $selected_episode_poems = isset($filmEpisode) ? $readSelectedValues($filmEpisode->related_poems ?? '') : [];
+                    $selected_episode_reflections = isset($filmEpisode) ? $readSelectedValues($filmEpisode->related_reflections ?? '') : [];
+                    $selected_episode_people = isset($filmEpisode) ? $readSelectedValues($filmEpisode->related_people ?? '') : [];
                     ?>
 
                     <!-- Tabs Navigation -->
@@ -242,7 +266,7 @@ include('inc/sidebar.php');
 
                     <!-- Film Details Tab -->
                     <div id="film-content" class="tab-content<?php echo ($activeTab=='film-content')?' active':''; ?>">
-                        <form name="filmForm" id="filmForm" method="post" action="<?php echo base_url('FilmController/save'); ?>" enctype="multipart/form-data">
+                        <form name="filmForm" id="filmForm" method="post" action="<?php echo isset($film) && !empty($film->id) ? base_url('FilmController/update/' . (int)$film->id) : base_url('FilmController/save'); ?>" enctype="multipart/form-data">
                             
                             <div class="form-group row align-items-center">
                                 <label class="col-md-2 col-form-label">Film Title <span style="color:red">*</span></label>
@@ -279,8 +303,15 @@ include('inc/sidebar.php');
                                 }
                             }
                             $filmLanguageRows = [];
-                            if (isset($film) && isset($film->film_language_links) && trim((string)$film->film_language_links) !== '') {
-                                $decodedLangRows = json_decode((string)$film->film_language_links, true);
+                            // Read from any of the JSON columns (language_video_links is canonical; film_language_links is legacy)
+                            $rawLangJson = '';
+                            foreach (['language_video_links', 'film_language_links', 'language_links', 'video_links', 'youtube_links'] as $colKey) {
+                                if (isset($film) && isset($film->$colKey) && trim((string)$film->$colKey) !== '') {
+                                    $rawLangJson = (string)$film->$colKey; break;
+                                }
+                            }
+                            if ($rawLangJson !== '') {
+                                $decodedLangRows = json_decode($rawLangJson, true);
                                 if (is_array($decodedLangRows)) {
                                     foreach ($decodedLangRows as $row) {
                                         if (!is_array($row)) { continue; }
@@ -330,7 +361,7 @@ include('inc/sidebar.php');
                                     </div>
                                     <div class="d-flex" style="gap:8px;">
                                         <button type="button" class="btn btn-secondary btn-sm" id="addFilmLanguageRowBtn">Add Language</button>
-                                        <button type="button" class="btn btn-info btn-sm" id="addFilmLanguageOptionBtn">Add New Language Option</button>
+                                        <button type="button" class="btn btn-info btn-sm" id="addFilmLanguageOptionBtn">Add New Language</button>
                                     </div>
                                 </div>
                             </div>
@@ -372,7 +403,10 @@ include('inc/sidebar.php');
                                         if (empty($selected_directors) && isset($film) && isset($film->directors)) {
                                             $selected_directors = array_map('trim', explode(',', (string)$film->directors));
                                         }
-                                        $director_rows = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person ORDER BY id DESC")->result();
+                                        $director_rows = $this->db->query("
+                                            SELECT id, first_name, middle_name, last_name FROM person
+                                            ORDER BY LOWER(TRIM(CONCAT_WS(' ', IFNULL(first_name,''), IFNULL(middle_name,''), IFNULL(last_name,'')))) ASC, id ASC
+                                        ")->result();
                                         foreach ($director_rows as $person) {
                                             $parts = [];
                                             if (!empty(trim($person->first_name))) { $parts[] = trim($person->first_name); }
@@ -453,7 +487,7 @@ include('inc/sidebar.php');
                             <div class="form-group row align-items-center">
                                 <label class="col-md-2 col-form-label">About</label>
                                 <div class="col-md-9">
-                                    <textarea name="about" id="about" class="form-control" rows="4" placeholder="Enter About"><?php echo isset($film) ? htmlspecialchars($film->about) : ''; ?></textarea>
+                                    <textarea class="form-control" id="about" name="about" rows="4" placeholder="Enter About"><?php echo isset($film) ? htmlspecialchars($film->about) : ''; ?></textarea>
                                 </div>
                             </div>
                                 
@@ -537,6 +571,21 @@ include('inc/sidebar.php');
                                         </select>
                                     </div>
                                 </div>
+                                <!-- Film Episode -->
+                                <div class="form-group row align-items-center">
+                                    <label class="col-md-2 col-form-label">⊙ Film Episode</label>
+                                    <div class="col-md-4 d-flex align-items-center gap-2">
+                                        <select class="form-control select2" name="related_film_episodes[]" id="related_film_episodes" multiple>
+                                            <option value="">None Selected</option>
+                                            <?php foreach ($episode_rows as $episode): ?>
+                                                <?php
+                                                    $label = !empty($episode->episode_label) ? $episode->episode_label : ('Episode #' . $episode->id);
+                                                ?>
+                                                <option value="<?php echo htmlspecialchars((string)$episode->id); ?>" <?php echo in_array((string)$episode->id, $selected_film_episodes, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
                                 <!-- People -->
                                 <div class="form-group row align-items-center">
                                     <label class="col-md-2 col-form-label">⊙ People</label>
@@ -545,11 +594,11 @@ include('inc/sidebar.php');
                                             <option value="">None Selected</option>
                                             <?php foreach ($person_rows as $person): ?>
                                                 <?php
-                                                $parts = [];
-                                                if (!empty(trim($person->first_name))) { $parts[] = trim($person->first_name); }
-                                                if (!empty(trim($person->middle_name))) { $parts[] = trim($person->middle_name); }
-                                                if (!empty(trim($person->last_name))) { $parts[] = trim($person->last_name); }
-                                                $label = !empty($parts) ? implode(' ', $parts) : ('Person #' . $person->id);
+                                                    $parts = [];
+                                                    if (!empty(trim($person->first_name))) { $parts[] = trim($person->first_name); }
+                                                    if (!empty(trim($person->middle_name))) { $parts[] = trim($person->middle_name); }
+                                                    if (!empty(trim($person->last_name))) { $parts[] = trim($person->last_name); }
+                                                    $label = !empty($parts) ? implode(' ', $parts) : ('Person #' . $person->id);
                                                 ?>
                                                 <option value="<?php echo htmlspecialchars((string)$person->id); ?>" <?php echo in_array((string)$person->id, $selected_film_people, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                                             <?php endforeach; ?>
@@ -580,6 +629,22 @@ include('inc/sidebar.php');
                                 </div>
                             </div>
 
+                            <div class="form-group row align-items-center">
+                                <label class="col-md-2 col-form-label">Publish Status</label>
+                                <div class="col-md-4">
+                                    <?php
+                                        $publishYes = false;
+                                        if (isset($film) && isset($film->publish)) {
+                                            $publishYes = in_array(strtolower((string)$film->publish), ['1', 'true', 'yes'], true);
+                                        }
+                                    ?>
+                                    <select name="publish" id="publish" class="form-control">
+                                        <option value="0" <?php echo !$publishYes ? 'selected' : ''; ?>>No</option>
+                                        <option value="1" <?php echo $publishYes ? 'selected' : ''; ?>>Yes</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div class="save-btn-container">
                                 <button type="button" class="btn btn-primary" onclick="switchTab('episode-content')">
                                     Next: Film Episode <i class="fas fa-arrow-right"></i>
@@ -602,11 +667,11 @@ include('inc/sidebar.php');
                                 </div>
                             </div>
 
-                            <!-- YouTube Link field -->
+                            <!-- YouTube Video ID field -->
                             <div class="form-group row align-items-center">
-                                <label class="col-md-2 col-form-label">YouTube Link</label>
+                                <label class="col-md-2 col-form-label">YouTube Video ID</label>
                                 <div class="col-md-4">
-                                    <input type="text" name="youtube_link" id="youtube_link" class="form-control" placeholder="Enter YouTube Link" value="<?php echo isset($filmEpisode) ? htmlspecialchars($filmEpisode->youtube_link) : ''; ?>">
+                                    <input type="text" name="youtube_link" id="youtube_link" class="form-control" placeholder="Enter YouTube Video ID" value="<?php echo isset($filmEpisode) ? htmlspecialchars($filmEpisode->youtube_link) : ''; ?>">
                                 </div>
                             </div>
 
@@ -616,12 +681,20 @@ include('inc/sidebar.php');
                                 <div class="col-md-4">
                                     <select name="main_title" id="main_title_ep" class="form-control" required>
                                         <option value="">Select Main Film</option>
-                                        <?php 
-                                        $mainVal = isset($filmEpisode) ? $filmEpisode->main_title : '';
-                                        $films = $this->db->query("SELECT id, main_title FROM film_details ORDER BY main_title ASC")->result();
-                                        foreach ($films as $film) {
-                                            $sel = ($mainVal == $film->id) ? 'selected' : '';
-                                            echo '<option value="'.htmlspecialchars($film->id).'" '.$sel.'>'.htmlspecialchars($film->main_title).'</option>';
+                                        <?php
+                                        $mainVal = '';
+                                        if (isset($filmEpisode)) {
+                                            $mainVal = isset($filmEpisode->film_id) && (int)$filmEpisode->film_id > 0
+                                                ? (string)(int)$filmEpisode->film_id
+                                                : (isset($filmEpisode->main_title) ? (string)$filmEpisode->main_title : '');
+                                        }
+                                        // Source: same `film` table that filmDetails-list reads from
+                                        $filmsList = $this->db->table_exists('film')
+                                            ? $this->db->query("SELECT id, COALESCE(NULLIF(TRIM(english_transliteration), ''), NULLIF(TRIM(english_translation), ''), NULLIF(TRIM(original_title), ''), CONCAT('Film #', id)) AS film_label FROM film ORDER BY film_label ASC")->result()
+                                            : [];
+                                        foreach ($filmsList as $f) {
+                                            $sel = ((string)$mainVal === (string)$f->id) ? 'selected' : '';
+                                            echo '<option value="'.htmlspecialchars((string)$f->id).'" '.$sel.'>'.htmlspecialchars((string)$f->film_label).'</option>';
                                         }
                                         ?>
                                     </select>
@@ -737,6 +810,89 @@ include('inc/sidebar.php');
                                                 <option value="<?php echo htmlspecialchars((string)$poem->id); ?>" <?php echo in_array((string)$poem->id, $selected_episode_poems, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                                             <?php endforeach; ?>
                                         </select>
+                                    </div>
+                                </div>
+                                <!-- Reflections -->
+                                <div class="form-group row align-items-center">
+                                    <label class="col-md-2 col-form-label">⊙ Reflections</label>
+                                    <div class="col-md-4 d-flex align-items-center gap-2">
+                                        <select class="form-control select2" name="episode_related_reflections[]" id="episode_related_reflections" multiple>
+                                            <option value="">None Selected</option>
+                                            <?php foreach ($reflection_rows as $reflection): ?>
+                                                <?php $label = !empty($reflection->title) ? $reflection->title : ('Reflection #' . $reflection->id); ?>
+                                                <option value="<?php echo htmlspecialchars((string)$reflection->id); ?>" <?php echo in_array((string)$reflection->id, $selected_episode_reflections, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                                <!-- People -->
+                                <div class="form-group row align-items-center">
+                                    <label class="col-md-2 col-form-label">⊙ People</label>
+                                    <div class="col-md-4 d-flex align-items-center gap-2">
+                                        <select class="form-control select2" name="episode_related_people[]" id="episode_related_people" multiple>
+                                            <option value="">None Selected</option>
+                                            <?php foreach ($person_rows as $person): ?>
+                                                <?php
+                                                    $parts = [];
+                                                    if (!empty(trim($person->first_name))) { $parts[] = trim($person->first_name); }
+                                                    if (!empty(trim($person->middle_name))) { $parts[] = trim($person->middle_name); }
+                                                    if (!empty(trim($person->last_name))) { $parts[] = trim($person->last_name); }
+                                                    $label = !empty($parts) ? implode(' ', $parts) : ('Person #' . $person->id);
+                                                ?>
+                                                <option value="<?php echo htmlspecialchars((string)$person->id); ?>" <?php echo in_array((string)$person->id, $selected_episode_people, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                                <!-- Films -->
+                                <?php
+                                    $ep_film_rows = $this->db->table_exists('film')
+                                        ? $this->db->query("SELECT id, COALESCE(NULLIF(TRIM(english_transliteration), ''), NULLIF(TRIM(english_translation), ''), NULLIF(TRIM(original_title), ''), CONCAT('Film #', id)) AS film_label FROM film ORDER BY film_label ASC")->result()
+                                        : [];
+                                    $selected_episode_films = [];
+                                    if (isset($filmEpisode) && !empty($filmEpisode->id)) {
+                                        if ($this->db->table_exists('film_episode_film')) {
+                                            $efr = $this->db->select('film_id')->from('film_episode_film')->where('film_episode_id', (int)$filmEpisode->id)->get()->result_array();
+                                            foreach ($efr as $r) { if (!empty($r['film_id'])) { $selected_episode_films[] = (string)(int)$r['film_id']; } }
+                                        }
+                                        // Fallback: parent film_id of this episode
+                                        if (empty($selected_episode_films) && !empty($filmEpisode->film_id)) {
+                                            $selected_episode_films[] = (string)(int)$filmEpisode->film_id;
+                                        }
+                                        $selected_episode_films = array_values(array_unique($selected_episode_films));
+                                    }
+                                ?>
+                                <div class="form-group row align-items-center">
+                                    <label class="col-md-2 col-form-label">⊙ Films</label>
+                                    <div class="col-md-4 d-flex align-items-center gap-2">
+                                        <select class="form-control select2" name="episode_related_films[]" id="episode_related_films" multiple>
+                                            <option value="">None Selected</option>
+                                            <?php foreach ($ep_film_rows as $f): ?>
+                                                <option value="<?php echo htmlspecialchars((string)$f->id); ?>" <?php echo in_array((string)$f->id, $selected_episode_films, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars((string)$f->film_label); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <label><strong>Meta Data</strong></label>
+                            <div style="padding-left:20px;">
+                                <div class="form-group row align-items-center">
+                                    <label class="col-md-2 col-form-label">⊙ Meta Title</label>
+                                    <div class="col-md-4">
+                                        <input type="text" name="meta_title" class="form-control" placeholder="Enter Meta Title" value="<?php echo isset($filmEpisode) ? htmlspecialchars($filmEpisode->meta_title) : ''; ?>">
+                                    </div>
+                                </div>
+                                <div class="form-group row align-items-center">
+                                    <label class="col-md-2 col-form-label">⊙ Meta Keywords</label>
+                                    <div class="col-md-4">
+                                        <input type="text" name="meta_keywords" class="form-control" placeholder="Enter Meta Keywords" value="<?php echo isset($filmEpisode) ? htmlspecialchars(isset($filmEpisode->meta_keywords) ? $filmEpisode->meta_keywords : (isset($filmEpisode->meta_keyword) ? $filmEpisode->meta_keyword : '')) : ''; ?>">
+                                    </div>
+                                </div>
+                                <div class="form-group row align-items-center">
+                                    <label class="col-md-2 col-form-label">⊙ Meta Description</label>
+                                    <div class="col-md-4">
+                                        <textarea name="meta_description" class="form-control" rows="3" placeholder="Enter Meta Description"><?php echo isset($filmEpisode) ? htmlspecialchars($filmEpisode->meta_description) : ''; ?></textarea>
                                     </div>
                                 </div>
                             </div>

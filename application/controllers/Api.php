@@ -346,7 +346,8 @@ class Api extends CI_Controller {
                 $row = $this->db->select('title')->from('reflection')->where('id', $id)->get()->row_array();
                 if (!empty($row['title'])) $names[] = (string)$row['title'];
             } elseif ($type === 'keyword') {
-                $row = $this->db->select('word_transliteration')->from('keywords')->where('id', $id)->get()->row_array();
+                $table = $this->db->table_exists('word') ? 'word' : 'keywords';
+                $row = $this->db->select('word_transliteration')->from($table)->where('id', $id)->get()->row_array();
                 if (!empty($row['word_transliteration'])) $names[] = (string)$row['word_transliteration'];
             } elseif ($type === 'film') {
                 $row = $this->db->select("COALESCE(NULLIF(english_transliteration,''), english_translation, original_title) AS label")->from('film')->where('id', $id)->get()->row_array();
@@ -501,6 +502,7 @@ class Api extends CI_Controller {
     header("Access-Control-Allow-Origin: *");
     header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+    header('Content-Type: application/json; charset=utf-8');
 // GET params
         $page  = $this->input->get('page');
         $limit = $this->input->get('limit');
@@ -545,7 +547,7 @@ class Api extends CI_Controller {
         }
 
         if ($format != "") {
-            $this->db->where('reflection.speaker_id', (int)$format);
+            $this->db->where('reflection.format', $format);
         }
 
         $total = $this->db->count_all_results();
@@ -577,7 +579,7 @@ class Api extends CI_Controller {
         }
 
         if ($format != "") {
-            $this->db->where('reflection.speaker_id', (int)$format);
+            $this->db->where('reflection.format', $format);
         }
 
         // Latest first
@@ -603,89 +605,149 @@ class Api extends CI_Controller {
     }
 
     public function person_list() {
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+        header("Access-Control-Allow-Origin: *");
+        header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+        header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+        header('Content-Type: application/json; charset=utf-8');
 
-        // GET parameters 
-        $page  = $this->input->get('page');
-        $limit = $this->input->get('limit');
+        // GET params
+        $page   = $this->input->get('page');
+        $limit  = $this->input->get('limit');
         $search = $this->input->get('search');
+        if ($search === "null" || $search === "undefined" || $search === null) $search = "";
 
-        if ($search === "null" || $search === "undefined" || $search === null || $search === "") {
-            $search = "";
-        }
-
-        // Defaults
-        $page  = (!empty($page)  && is_numeric($page))  ? $page  : 1;
-        $limit = (!empty($limit) && is_numeric($limit)) ? $limit : 10;
-
+        $page  = (!empty($page)  && is_numeric($page))  ? (int)$page  : 1;
+        $limit = (!empty($limit) && is_numeric($limit)) ? (int)$limit : 10;
         $offset = ($page - 1) * $limit;
 
-        // ------------------------------------------------------
-        // 1️⃣ Total count (for pagination)
-        // ------------------------------------------------------
-
+        // ---------- Total count (single distinct person rows) ----------
         $this->db->from('person');
-        $this->db->join('person_category pc', 'pc.person_id = person.id', 'left');
-        $this->db->join('category', 'category.id = pc.category_id', 'left');
-
-        if ($search != "") {
+        if ($search !== "") {
             $this->db->group_start();
                 $this->db->like('person.first_name', $search);
                 $this->db->or_like('person.middle_name', $search);
                 $this->db->or_like('person.last_name', $search);
-                $this->db->or_like("CONCAT(TRIM(person.first_name), ' ', TRIM(COALESCE(person.middle_name,'')), ' ', TRIM(COALESCE(person.last_name,'')))", $search, 'both', false);
                 $this->db->or_like("TRIM(CONCAT_WS(' ', person.first_name, person.middle_name, person.last_name))", $search, 'both', false);
             $this->db->group_end();
         }
-
         $total = $this->db->count_all_results();
 
-        // ------------------------------------------------------
-        // 2️⃣ Get paginated data
-        // ------------------------------------------------------
-
+        // ---------- Paginated person rows (no JOIN — keeps one row per person) ----------
         $this->db->select("
             person.*,
-            CONCAT(person.first_name, ' ', COALESCE(person.middle_name,''), ' ', COALESCE(person.last_name,'')) AS person_name_english,
-            CONCAT(person.first_name_in_hindi, ' ', COALESCE(person.middle_name_in_hindi,''), ' ', COALESCE(person.last_name_in_hindi,'')) AS person_name_hindi,
-            person.thumbnail_url,
-            category.name AS category_name,
-            category.category_type
+            CONCAT_WS(' ', person.first_name, NULLIF(TRIM(COALESCE(person.middle_name,'')),''), person.last_name) AS person_name_english,
+            CONCAT_WS(' ', person.first_name_in_hindi, NULLIF(TRIM(COALESCE(person.middle_name_in_hindi,'')),''), person.last_name_in_hindi) AS person_name_hindi,
+            person.thumbnail_url
         ");
-
         $this->db->from('person');
-        $this->db->join('person_category pc', 'pc.person_id = person.id', 'left');
-        $this->db->join('category', 'category.id = pc.category_id', 'left');
-
-        if ($search != "") {
+        if ($search !== "") {
             $this->db->group_start();
                 $this->db->like('person.first_name', $search);
                 $this->db->or_like('person.middle_name', $search);
                 $this->db->or_like('person.last_name', $search);
-                $this->db->or_like("CONCAT(TRIM(person.first_name), ' ', TRIM(COALESCE(person.middle_name,'')), ' ', TRIM(COALESCE(person.last_name,'')))", $search, 'both', false);
                 $this->db->or_like("TRIM(CONCAT_WS(' ', person.first_name, person.middle_name, person.last_name))", $search, 'both', false);
             $this->db->group_end();
         }
-
-        $this->db->order_by('person.id', 'DESC');
-        $this->db->group_by('person.id');
-
-        // Pagination
+        $this->db->order_by("LOWER(TRIM(CONCAT_WS(' ', person.first_name, person.middle_name, person.last_name)))", 'ASC', false);
         $this->db->limit($limit, $offset);
+        $people = $this->db->get()->result();
 
-        $query = $this->db->get();
-        $data = $query->result();
+        // ---------- Build category map { id => name } ----------
+        $occupation_map = [];
+        if ($this->db->table_exists('category')) {
+            $rows = $this->db
+                ->select('id, name')
+                ->from('category')
+                ->where('category_type', 'person')
+                ->where('name IS NOT NULL', null, false)
+                ->where("TRIM(name) !=", '')
+                ->get()->result_array();
+            foreach ($rows as $row) {
+                $cid  = isset($row['id']) ? (string)$row['id'] : null;
+                $name = isset($row['name']) ? trim((string)$row['name']) : '';
+                if ($cid !== null && $name !== '') $occupation_map[$cid] = $name;
+            }
+        }
+
+        // ---------- Build person → categories[] map (only for paginated ids) ----------
+        $person_category_map = [];
+        $personIds = array_filter(array_map(function ($p) { return isset($p->id) ? (int)$p->id : 0; }, $people));
+        if (!empty($personIds) && $this->db->table_exists('person_category')) {
+            $rows = $this->db
+                ->select('person_id, category_id')
+                ->from('person_category')
+                ->where_in('person_id', $personIds)
+                ->get()->result_array();
+            foreach ($rows as $r) {
+                $pid = isset($r['person_id']) ? (string)$r['person_id'] : '';
+                $cid = isset($r['category_id']) ? (string)$r['category_id'] : '';
+                if ($pid === '' || $cid === '') continue;
+                if (!isset($person_category_map[$pid])) $person_category_map[$pid] = [];
+                $person_category_map[$pid][] = $cid;
+            }
+        }
+
+        // ---------- Mirror admin (PersonController::fetch_person) Occupation / Profile Tags split ----------
+        // Rule: category name with leading `_`  → Occupation
+        //       plain category name             → Profile Tags
+        $display_map = ['1' => 'Yes', '0' => 'No', 'yes' => 'Yes', 'no' => 'No', 'Yes' => 'Yes', 'No' => 'No'];
+        $data = [];
+        foreach ($people as $p) {
+            $personId = isset($p->id) ? (string)$p->id : '';
+
+            // category ids: junction first; fallback to legacy person.occupation CSV
+            $catIds = ($personId !== '' && isset($person_category_map[$personId])) ? $person_category_map[$personId] : [];
+            if (empty($catIds) && !empty($p->occupation)) {
+                $catIds = array_filter(array_map('trim', explode(',', (string)$p->occupation)));
+            }
+
+            $occupationNames = [];
+            $profileTagsArr  = [];
+            foreach ($catIds as $cid) {
+                $catName = isset($occupation_map[$cid]) ? $occupation_map[$cid] : '';
+                if ($catName === '') continue;
+                if (strpos($catName, '_') === 0) $occupationNames[] = ltrim($catName, '_');
+                else                              $profileTagsArr[]  = $catName;
+            }
+
+            // Profile Tags fallback to legacy person.profile_tags CSV
+            if (empty($profileTagsArr) && !empty($p->profile_tags)) {
+                $rawTagIds = array_filter(array_map('trim', explode(',', (string)$p->profile_tags)));
+                foreach ($rawTagIds as $tid) {
+                    if (isset($occupation_map[$tid])) $profileTagsArr[] = $occupation_map[$tid];
+                    elseif ($tid !== '')              $profileTagsArr[] = $tid;
+                }
+            }
+
+            $occupationNames = array_values(array_unique($occupationNames));
+            $profileTagsArr  = array_values(array_unique($profileTagsArr));
+
+            $fullName = trim(preg_replace('/\s+/', ' ', implode(' ', [
+                isset($p->first_name) ? $p->first_name : '',
+                isset($p->middle_name) ? $p->middle_name : '',
+                isset($p->last_name) ? $p->last_name : '',
+            ])));
+            if ($fullName === '') $fullName = 'Unnamed';
+
+            $row = (array)$p;
+            $row['person_name']      = $fullName;
+            $row['occupation_list']  = $occupationNames;
+            $row['profile_tags_list']= $profileTagsArr;
+            $row['occupation_text']  = !empty($occupationNames) ? implode(', ', $occupationNames) : '—';
+            $row['profile_tags_text']= !empty($profileTagsArr)  ? implode(', ', $profileTagsArr)  : '—';
+            $row['display_label']    = isset($display_map[$p->display]) ? $display_map[$p->display] : $p->display;
+            $row['publish_label']    = ($p->publish == 1 || strtolower((string)$p->publish) === 'yes') ? 'Yes' : 'No';
+            $data[] = $row;
+        }
 
         echo json_encode([
-            "status"       => true,
-            "page"         => $page,
-            "limit"        => $limit,
-            "search"       => $search,
-            "total"        => $total,
-            "total_pages"  => ceil($total / $limit),
-            "data"         => $data
+            "status"      => true,
+            "page"        => $page,
+            "limit"       => $limit,
+            "search"      => $search,
+            "total"       => $total,
+            "total_pages" => (int)ceil($total / $limit),
+            "data"        => $data,
         ]);
     }
 
@@ -693,64 +755,66 @@ class Api extends CI_Controller {
     header("Access-Control-Allow-Origin: *");
     header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+    header('Content-Type: application/json; charset=utf-8');
 
         // ========== PAGINATION INPUT ==========
         $page  = $this->input->get('page');
         $limit = $this->input->get('limit');
-
-        // Defaults
-        $page  = (!empty($page)  && is_numeric($page))  ? $page  : 1;
-        $limit = (!empty($limit) && is_numeric($limit)) ? $limit : 10;
-
+        $page  = (!empty($page)  && is_numeric($page))  ? (int)$page  : 1;
+        $limit = (!empty($limit) && is_numeric($limit)) ? (int)$limit : 10;
         $offset = ($page - 1) * $limit;
 
-        // =======================================
-        // 1️⃣ TOTAL COUNT (Pagination Required)
-        // =======================================
-        $this->db->from('film');
-        $this->db->join('film_director fd', 'fd.film_id = film.id', 'left');
-        $this->db->join('person p', 'p.id = fd.director_id', 'left');
+        // Source = same `film` table the admin reads from (FilmModel::fetch_all).
+        $total = $this->db->count_all_results('film');
 
-        $total = $this->db->count_all_results();
+        $films = $this->db->select('*')
+            ->from('film')
+            ->order_by('id', 'DESC')
+            ->limit($limit, $offset)
+            ->get()->result();
 
-        // =======================================
-        // 2️⃣ ACTUAL DATA (Paginated)
-        // =======================================
+        // Bulk-load director names per film via film_director junction
+        $directorsByFilm = [];
+        $filmIds = array_map(function ($f) { return (int)$f->id; }, $films);
+        if (!empty($filmIds) && $this->db->table_exists('film_director')) {
+            $jrows = $this->db->select('fd.film_id, p.first_name, p.middle_name, p.last_name, p.first_name_in_hindi, p.middle_name_in_hindi, p.last_name_in_hindi')
+                ->from('film_director fd')
+                ->join('person p', 'p.id = fd.director_id', 'left')
+                ->where_in('fd.film_id', $filmIds)
+                ->get()->result();
+            foreach ($jrows as $r) {
+                $fid = (int)$r->film_id;
+                $en = trim(implode(' ', array_filter([$r->first_name ?? '', $r->middle_name ?? '', $r->last_name ?? ''], function($v){return trim((string)$v) !== '';})));
+                $hi = trim(implode(' ', array_filter([$r->first_name_in_hindi ?? '', $r->middle_name_in_hindi ?? '', $r->last_name_in_hindi ?? ''], function($v){return trim((string)$v) !== '';})));
+                if (!isset($directorsByFilm[$fid])) $directorsByFilm[$fid] = ['en' => [], 'hi' => []];
+                if ($en !== '') $directorsByFilm[$fid]['en'][] = $en;
+                if ($hi !== '') $directorsByFilm[$fid]['hi'][] = $hi;
+            }
+        }
 
-        $this->db->select("
-            film_details.*,
-
-            CONCAT(p.first_name, ' ', COALESCE(p.middle_name,''), ' ', COALESCE(p.last_name,'')) AS director_name_english,
-            CONCAT(p.first_name_in_hindi, ' ', COALESCE(p.middle_name_in_hindi,''), ' ', COALESCE(p.last_name_in_hindi,'')) AS director_name_hindi
-        ");
-
-        $this->db->from('film_details');
-        $this->db->join('film_director fd', 'fd.film_id = film_details.id', 'left');
-        $this->db->join('person p', 'p.id = fd.director_id', 'left');
-
-        // Sort by Year DESC → Latest first
-        $this->db->order_by("film_details.date_of_upload", "DESC");
-
-        // Avoid duplicates
-        $this->db->group_by('film_details.id');
-
-        // Apply pagination
-        $this->db->limit($limit, $offset);
-
-        $query  = $this->db->get();
-        $result = $query->result();
-
-        // =======================================
-        // JSON OUTPUT
-        // =======================================
+        // Decorate each film with the same fields admin's edit-form sees + director arrays
+        $data = [];
+        foreach ($films as $f) {
+            $fid = (int)$f->id;
+            // Admin's mapping (FilmModel::get_film_by_id):
+            $f->main_title   = isset($f->english_transliteration) ? (string)$f->english_transliteration : '';
+            $f->second_title = isset($f->english_translation)     ? (string)$f->english_translation     : '';
+            $f->series_title = isset($f->original_title)          ? (string)$f->original_title          : '';
+            $f->publish      = isset($f->publish) && $f->publish !== '' ? $f->publish : (isset($f->is_published) ? $f->is_published : '');
+            $f->director_names_english = isset($directorsByFilm[$fid]) ? array_values(array_unique($directorsByFilm[$fid]['en'])) : [];
+            $f->director_names_hindi   = isset($directorsByFilm[$fid]) ? array_values(array_unique($directorsByFilm[$fid]['hi'])) : [];
+            $f->director_name_english  = !empty($f->director_names_english) ? implode(', ', $f->director_names_english) : '';
+            $f->director_name_hindi    = !empty($f->director_names_hindi)   ? implode(', ', $f->director_names_hindi)   : '';
+            $data[] = $f;
+        }
 
         echo json_encode([
             "status"       => true,
             "page"         => $page,
             "limit"        => $limit,
             "total"        => $total,
-            "total_pages"  => ceil($total / $limit),
-            "data"         => $result
+            "total_pages"  => $limit > 0 ? (int)ceil($total / $limit) : 1,
+            "data"         => $data,
         ]);
     }
 
@@ -761,6 +825,7 @@ public function first_items()
     header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header('Content-Type: application/json; charset=utf-8');
     ////////////////////////////////
     // 1️⃣ FIRST SONG
     ////////////////////////////////
@@ -1225,19 +1290,23 @@ public function about()
         return;
     }
 
-    $ajabTypeMap = [
-        1 => 'intro',
-        2 => 'translit guide',
-        3 => 'copyrights'
-    ];
+    $ajabTypeMap = [];
+    if ($this->db->table_exists('ajab_menus')) {
+        $ajabMenuRows = $this->db->order_by('sort_order', 'ASC')->order_by('id', 'ASC')->get('ajab_menus')->result();
+        foreach ($ajabMenuRows as $m) { $ajabTypeMap[(int)$m->id] = $m->slug; }
+    }
+    if (empty($ajabTypeMap)) {
+        $ajabTypeMap = [1 => 'intro', 2 => 'translit guide', 3 => 'copyrights'];
+    }
 
-    $kabirTypeMap = [
-        1 => 'intro',
-        2 => 'team',
-        3 => 'films',
-        4 => 'books',
-        5 => 'shabad shaala'
-    ];
+    $kabirTypeMap = [];
+    if ($this->db->table_exists('kabir_menus')) {
+        $menuRows = $this->db->order_by('sort_order', 'ASC')->order_by('id', 'ASC')->get('kabir_menus')->result();
+        foreach ($menuRows as $m) { $kabirTypeMap[(int)$m->id] = $m->slug; }
+    }
+    if (empty($kabirTypeMap)) {
+        $kabirTypeMap = [1 => 'intro', 2 => 'team', 3 => 'films', 4 => 'books', 5 => 'shabad shaala'];
+    }
 
     $ajabRows = $this->db->where('status', 0)
                          ->order_by('id', 'DESC')
@@ -1249,19 +1318,11 @@ public function about()
                           ->get('about')
                           ->result();
 
-    $ajabMenuData = [
-        'intro' => [],
-        'translit guide' => [],
-        'copyrights' => []
-    ];
+    $ajabMenuData = [];
+    foreach ($ajabTypeMap as $slug) { $ajabMenuData[$slug] = []; }
 
-    $kabirMenuData = [
-        'intro' => [],
-        'team' => [],
-        'films' => [],
-        'books' => [],
-        'shabad shaala' => []
-    ];
+    $kabirMenuData = [];
+    foreach ($kabirTypeMap as $slug) { $kabirMenuData[$slug] = []; }
 
     foreach ($ajabRows as $row) {
         $typeKey = (int)$row->ajab_type;
@@ -1293,6 +1354,36 @@ public function about()
         $kabirMenuCounts[$menuKey] = count($menuRows);
     }
 
+    // Dynamic sections (about_sections / section_menus)
+    $sectionsData = [];
+    $sectionsCounts = [];
+    if ($this->db->table_exists('about_sections') && $this->db->table_exists('section_menus')) {
+        $sectionRows = $this->db->order_by('sort_order','ASC')->order_by('id','ASC')->get('about_sections')->result();
+        foreach ($sectionRows as $sec) {
+            $menuRows = $this->db->where('section_id', (int)$sec->id)
+                                  ->order_by('sort_order','ASC')->order_by('id','ASC')
+                                  ->get('section_menus')->result();
+            $menusBySlug = [];
+            foreach ($menuRows as $m) { $menusBySlug[$m->slug] = []; }
+            $contentRows = $this->db->where('status', (int)$sec->status_value)
+                                    ->order_by('id','DESC')->get('about')->result();
+            foreach ($contentRows as $row) {
+                $menuSlug = '';
+                if (!empty($row->menu_id)) {
+                    foreach ($menuRows as $m) { if ((int)$m->id === (int)$row->menu_id) { $menuSlug = $m->slug; break; } }
+                }
+                if ($menuSlug === '') continue;
+                $row->type_label = $menuSlug;
+                if (!isset($menusBySlug[$menuSlug])) $menusBySlug[$menuSlug] = [];
+                $menusBySlug[$menuSlug][] = $row;
+            }
+            $counts = [];
+            foreach ($menusBySlug as $k => $v) { $counts[$k] = count($v); }
+            $sectionsData[$sec->slug] = ['label' => $sec->label, 'menus' => $menusBySlug];
+            $sectionsCounts[$sec->slug] = ['label' => $sec->label, 'menus' => $counts];
+        }
+    }
+
     echo json_encode([
         "status" => true,
         "data" => [
@@ -1301,7 +1392,8 @@ public function about()
             ],
             "kabir_project" => [
                 "menus" => $kabirMenuData
-            ]
+            ],
+            "sections" => $sectionsData
         ],
         "counts" => [
             "ajab_shahar" => [
@@ -1309,7 +1401,8 @@ public function about()
             ],
             "kabir_project" => [
                 "menus" => $kabirMenuCounts
-            ]
+            ],
+            "sections" => $sectionsCounts
         ]
     ]);
 }
@@ -1428,34 +1521,121 @@ public function song_filters()
         header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
         header('Content-Type: application/json; charset=utf-8');
 
-        $getPeopleByCategory = function ($categoryName) {
-            return $this->db->select('person.id, person.first_name')
-                            ->from('person')
-                            ->join('person_category pc', 'pc.person_id = person.id', 'inner')
-                            ->join('category', 'category.id = pc.category_id', 'inner')
-                            ->where('category.name', $categoryName)
-                            ->group_by('person.id')
-                            ->order_by('person.first_name', 'ASC')
-                            ->get()
-                            ->result();
+        // Map any category name (e.g. "_Poet", "Singers", "Theatre Artist") to one of 6 buckets.
+        // Same rule as admin (PersonController::fetch_person → $bucket_for_name).
+        $bucket_for_name = function ($name) {
+            $n = strtolower(trim((string)$name));
+            $n = ltrim($n, '_');
+            if ($n === '') return null;
+            if (strpos($n, 'poet') !== false)        return 'poets';
+            if (strpos($n, 'singer') !== false ||
+                strpos($n, 'qawwal') !== false ||
+                strpos($n, 'musician') !== false)    return 'singers';
+            if (strpos($n, 'writer') !== false ||
+                strpos($n, 'scholar') !== false ||
+                strpos($n, 'researcher') !== false ||
+                strpos($n, 'translator') !== false ||
+                strpos($n, 'journalist') !== false ||
+                strpos($n, 'historian') !== false)   return 'writers';
+            if (strpos($n, 'artist') !== false ||
+                strpos($n, 'painter') !== false ||
+                strpos($n, 'photographer') !== false ||
+                strpos($n, 'filmmaker') !== false ||
+                strpos($n, 'designer') !== false ||
+                strpos($n, 'animator') !== false ||
+                strpos($n, 'illustrator') !== false ||
+                strpos($n, 'novelist') !== false ||
+                strpos($n, 'dancer') !== false ||
+                strpos($n, 'theatre') !== false ||
+                strpos($n, 'actor') !== false ||
+                strpos($n, 'performing') !== false)  return 'artists';
+            if (strpos($n, 'legendary') !== false)   return 'legendary_figures';
+            return 'other';
         };
 
-        $poets = $getPeopleByCategory('Poets');
-        $singers = $getPeopleByCategory('Singers');
-        $writers = $getPeopleByCategory('Writers');
-        $artists = $getPeopleByCategory('Artists');
-        $legendaryFigures = $getPeopleByCategory('Legendary Figures');
-        $other = $getPeopleByCategory('Other');
+        $buckets = [
+            'poets' => [], 'singers' => [], 'writers' => [],
+            'artists' => [], 'legendary_figures' => [], 'other' => []
+        ];
+        $seenInBucket = [
+            'poets' => [], 'singers' => [], 'writers' => [],
+            'artists' => [], 'legendary_figures' => [], 'other' => []
+        ];
+
+        // ---------- Build category map { id => name } ----------
+        $occupation_map = [];
+        if ($this->db->table_exists('category')) {
+            $rows = $this->db
+                ->select('id, name')
+                ->from('category')
+                ->where('category_type', 'person')
+                ->where('name IS NOT NULL', null, false)
+                ->where("TRIM(name) !=", '')
+                ->get()->result_array();
+            foreach ($rows as $r) {
+                $cid  = isset($r['id']) ? (string)$r['id'] : '';
+                $name = isset($r['name']) ? trim((string)$r['name']) : '';
+                if ($cid !== '' && $name !== '') $occupation_map[$cid] = $name;
+            }
+        }
+
+        // ---------- Pull all persons (id + first_name) ----------
+        $allPersons = $this->db
+            ->select('person.id, person.first_name, person.middle_name, person.last_name, person.occupation')
+            ->from('person')
+            ->order_by("LOWER(TRIM(CONCAT_WS(' ', person.first_name, person.middle_name, person.last_name)))", 'ASC', false)
+            ->get()->result();
+
+        // ---------- Build person → category-ids map (junction; fallback to legacy CSV) ----------
+        $person_category_map = [];
+        if ($this->db->table_exists('person_category')) {
+            $jrows = $this->db->select('person_id, category_id')->from('person_category')->get()->result_array();
+            foreach ($jrows as $jr) {
+                $pid = isset($jr['person_id']) ? (string)$jr['person_id'] : '';
+                $cid = isset($jr['category_id']) ? (string)$jr['category_id'] : '';
+                if ($pid === '' || $cid === '') continue;
+                $person_category_map[$pid][] = $cid;
+            }
+        }
+
+        foreach ($allPersons as $p) {
+            $pid = (string)$p->id;
+            $catIds = isset($person_category_map[$pid]) ? $person_category_map[$pid] : [];
+            if (empty($catIds) && !empty($p->occupation)) {
+                $catIds = array_filter(array_map('trim', explode(',', (string)$p->occupation)));
+            }
+
+            $bucketsForThisPerson = [];
+            foreach ($catIds as $cid) {
+                $catName = isset($occupation_map[$cid]) ? $occupation_map[$cid] : '';
+                if ($catName === '') continue;
+                $b = $bucket_for_name($catName);
+                if ($b !== null) $bucketsForThisPerson[$b] = true;
+            }
+
+            if (empty($bucketsForThisPerson)) continue;
+
+            $row = (object)[
+                'id'         => $p->id,
+                'first_name' => $p->first_name,
+            ];
+            foreach (array_keys($bucketsForThisPerson) as $b) {
+                if (!isset($seenInBucket[$b][$pid])) {
+                    $buckets[$b][] = $row;
+                    $seenInBucket[$b][$pid] = true;
+                }
+            }
+        }
 
         echo json_encode([
             'status' => true,
             'data' => [
-                'poets' => $poets,
-                'singers' => $singers,
-                'writers' => $writers,
-                'artists' => $artists,
-                'legendary_figures' => $legendaryFigures,
-                'other' => $other
+                'poets'             => $buckets['poets'],
+                'singers'           => $buckets['singers'],
+                'writers'           => $buckets['writers'],
+                'artists'           => $buckets['artists'],
+                'legendary_figures' => $buckets['legendary_figures'],
+                'other'             => $buckets['other'],
             ]
         ]);
     }

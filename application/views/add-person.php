@@ -298,12 +298,18 @@ include('inc/sidebar.php');
                     }
                     $selected_occupations = array_values(array_unique($selected_occupations));
 
-                    $keyword_rows = $this->db->query("SELECT id, word_transliteration FROM keywords ORDER BY id DESC")->result();
+                    $keyword_rows = $this->db->table_exists('word')
+                        ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) DESC, id DESC")->result()
+                        : [];
                     $song_rows = $this->db->query("SELECT id, umbrellaTitle FROM songs ORDER BY id DESC")->result();
                     $poem_rows = $this->db->query("SELECT id, COALESCE(NULLIF(couplet_transliteration, ''), original_title) AS poem_label FROM couplet ORDER BY id DESC")->result();
                     $reflection_rows = $this->db->query("SELECT id, title FROM reflection ORDER BY id DESC")->result();
                     $film_rows = $this->db->query("SELECT id, COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title) AS film_label FROM film ORDER BY id DESC")->result();
                     $episode_rows = $this->db->query("SELECT id, COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title) AS episode_label FROM film_episode ORDER BY id DESC")->result();
+                    $cleanOccLabel = function ($name) {
+                        $name = trim((string) $name);
+                        return preg_replace('/^_+/u', '', $name);
+                    };
                     $occupation_rows = [];
                     if ($this->db->table_exists('category')) {
                         $occupation_rows = $this->db
@@ -314,19 +320,43 @@ include('inc/sidebar.php');
                             ->where("TRIM(name) !=", '')
                             ->get()
                             ->result();
-                        usort($occupation_rows, function ($a, $b) {
-                            $nameA = isset($a->name) ? trim((string)$a->name) : '';
-                            $nameB = isset($b->name) ? trim((string)$b->name) : '';
-                            $startsWithUnderscoreA = (strpos($nameA, '_') === 0);
-                            $startsWithUnderscoreB = (strpos($nameB, '_') === 0);
-
-                            if ($startsWithUnderscoreA !== $startsWithUnderscoreB) {
-                                return $startsWithUnderscoreA ? -1 : 1;
+                        usort($occupation_rows, function ($a, $b) use ($cleanOccLabel) {
+                            $nameA = $cleanOccLabel(isset($a->name) ? $a->name : '');
+                            $nameB = $cleanOccLabel(isset($b->name) ? $b->name : '');
+                            $cmp = strcasecmp($nameA, $nameB);
+                            if ($cmp !== 0) {
+                                return $cmp;
                             }
-
-                            return strcasecmp($nameA, $nameB);
+                            return (int) (isset($a->id) ? $a->id : 0) - (int) (isset($b->id) ? $b->id : 0);
                         });
                     }
+                    $occupation_primary_options = [];
+                    $occupation_profile_tag_options = [];
+                    
+                    foreach ($occupation_rows as $row) {
+                        $name = isset($row->name) ? trim((string)$row->name) : '';
+                        if (strpos($name, '_') === 0) {
+                            // Underscore-prefixed names → Occupation field (swapped)
+                            $occupation_primary_options[] = $row;
+                        } else {
+                            // Plain names → Profile Tags field (swapped)
+                            $occupation_profile_tag_options[] = $row;
+                        }
+                    }
+                    $topOccIds = array_map(function ($o) {
+                        return isset($o->id) ? (string) $o->id : '';
+                    }, $occupation_primary_options);
+                    $tagOccIds = array_map(function ($o) {
+                        return isset($o->id) ? (string) $o->id : '';
+                    }, $occupation_profile_tag_options);
+                    $selected_occupation_only = array_values(array_intersect($selected_occupations, $topOccIds));
+                    $selected_profile_tags = array_values(array_intersect($selected_occupations, $tagOccIds));
+                    foreach ($selected_occupations as $sid) {
+                        if (!in_array($sid, $topOccIds, true) && !in_array($sid, $tagOccIds, true) && ctype_digit((string) $sid)) {
+                            $selected_profile_tags[] = $sid;
+                        }
+                    }
+                    $selected_profile_tags = array_values(array_unique($selected_profile_tags));
                     ?>
 
                     <form name="personForm" id="personForm" method="post" enctype="multipart/form-data" action="<?php echo isset($person) ? base_url('PersonController/update/' . $person->id) : base_url('PersonController/save'); ?>">
@@ -357,22 +387,24 @@ include('inc/sidebar.php');
                                 <select name="occupation[]" id="occupation" class="form-control select2" style="height: 38px;" multiple="multiple" data-placeholder="Select Occupation" required>
                                     <option value="">Select</option>
                                     <?php
-                                    foreach ($occupation_rows as $occupation_row) {
+                                    foreach ($occupation_primary_options as $occupation_row) {
                                         $occ_id = isset($occupation_row->id) ? (string)$occupation_row->id : '';
                                         $occ_label = isset($occupation_row->name) ? trim((string)$occupation_row->name) : '';
                                         if ($occ_label === '') {
                                             $occ_label = $occ_id !== '' ? ('Occupation #' . $occ_id) : 'Occupation';
                                         }
+                                        $occ_display = $cleanOccLabel($occ_label);
                                         $occ_value = $occ_id !== '' ? $occ_id : $occ_label;
-                                        $is_selected = in_array((string)$occ_value, $selected_occupations, true) || in_array($occ_label, $selected_occupations, true);
+                                        $is_selected = in_array((string)$occ_value, $selected_occupation_only, true) || in_array($occ_label, $selected_occupation_only, true);
                                     ?>
                                         <option value="<?php echo htmlspecialchars((string)$occ_value); ?>" <?php echo $is_selected ? 'selected' : ''; ?> >
-                                            <?php echo htmlspecialchars($occ_label); ?>
+                                            <?php echo htmlspecialchars($occ_display !== '' ? $occ_display : $occ_label); ?>
                                         </option>
                                     <?php }
                                     ?>
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addOccupationBtn">Add New</button>
+                                <button type="button" class="btn btn-primary btn-sm ml-1" id="editOccupationBtn">Edit</button>
                             </div>
                         </div>
 
@@ -389,10 +421,42 @@ include('inc/sidebar.php');
                                 </div>
                             </div>
                         </div>
+                        <!-- Add New Profile Tag Modal -->
+                        <div class="custom-modal" id="addProfileTagModal">
+                            <div class="custom-modal-content">
+                                <h5 style="margin-bottom: 15px;">Add New Profile Tag</h5>
+                                <div class="form-group">
+                                    <label>Profile Tag Name <span style="color:red">*</span></label>
+                                    <input type="text" id="newProfileTagName" class="form-control" placeholder="Enter Profile Tag Name">
+                                </div>
+                                <div class="custom-modal-actions">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="cancelProfileTagBtn">Cancel</button>
+                                    <button type="button" class="btn btn-success btn-sm" id="saveProfileTagBtn">Save</button>
+                                </div>
+                            </div>
+                        </div>
                         <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">Profile Tags</label>
-                            <div class="col-md-9">
-                                <textarea name="profile" id="profile" class="form-control" rows="3" placeholder="Profile Tags to be displayed next to Person name"><?php echo isset($person->profile) ? $person->profile : ''; ?></textarea>
+                            <div class="col-md-9 d-flex align-items-center">
+                                <select name="profile_tags[]" id="profile_tags" class="form-control select2" style="width:100%;" multiple="multiple" data-placeholder="Select profile tags">
+                                    <?php
+                                    foreach ($occupation_profile_tag_options as $occupation_row) {
+                                        $occ_id = isset($occupation_row->id) ? (string)$occupation_row->id : '';
+                                        $occ_label = isset($occupation_row->name) ? trim((string)$occupation_row->name) : '';
+                                        if ($occ_label === '') {
+                                            $occ_label = $occ_id !== '' ? ('Tag #' . $occ_id) : 'Tag';
+                                        }
+                                        $occ_display = $cleanOccLabel($occ_label);
+                                        $occ_value = $occ_id !== '' ? $occ_id : $occ_label;
+                                        $is_selected = in_array((string)$occ_value, $selected_profile_tags, true);
+                                        ?>
+                                        <option value="<?php echo htmlspecialchars((string)$occ_value); ?>" <?php echo $is_selected ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($occ_display !== '' ? $occ_display : $occ_label); ?>
+                                        </option>
+                                    <?php } ?>
+                                </select>
+                                <button type="button" class="btn btn-success btn-sm ml-2" id="addProfileTagBtn">Add New</button>
+                                <button type="button" class="btn btn-primary btn-sm ml-1" id="editProfileTagBtn">Edit</button>
                             </div>
                         </div>
                         <?php
@@ -403,7 +467,7 @@ include('inc/sidebar.php');
                             $existingPersonThumb = trim((string)$person->thumbnail_url);
                         }
                         $existingPersonThumbUrl = isset($person->thumbnail_url) ? trim((string)$person->thumbnail_url) : '';
-                        $personPublicBase = 'https://ajabshahar.aaravega.in';
+                        $personPublicBase = 'https://ajab.designanddevelopment.in/admin';
                         $personThumbPreviewSrc = '';
                         if ($existingPersonThumb !== '') {
                             if (preg_match('#^https?://#i', $existingPersonThumb)) {
@@ -486,12 +550,15 @@ include('inc/sidebar.php');
                                     <?php endforeach; ?>
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtn">Add New</button>
+                                <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtn">Edit</button>
                             </div>
                             <!-- Add New Keyword Modal -->
                             <div class="custom-modal" id="addNewKeywordModal">
                                 <div class="custom-modal-content">
                                     <h5>Add New Keyword</h5>
-                                    <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword">
+                                    <input type="text" id="newKeywordOriginal" class="form-control" placeholder="Enter Original Keyword">
+                                    <input type="text" id="newKeywordTranslation" class="form-control" placeholder="Enter Keyword Translation">
+                                    <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword Transliteration">
                                     <div class="custom-modal-actions">
                                         <button type="button" class="btn btn-secondary btn-sm" id="cancelAddNewKeyword">Cancel</button>
                                         <button type="button" class="btn btn-success btn-sm" id="addKeywordConfirm">Add</button>
@@ -730,10 +797,16 @@ $(document).ready(function() {
     function closeOccupationModal() {
         $('#addOccupationModal').hide();
     }
+    // --- Profile Tag Modal ---
+    function openProfileTagModal() { $('#addProfileTagModal').css('display', 'flex'); $('#newProfileTagName').val('').focus(); }
+    function closeProfileTagModal() { $('#addProfileTagModal').hide(); }
+    
     $('#addOccupationBtn').on('click', function() { openOccupationModal(); });
     $('#cancelOccupationBtn').on('click', function() { closeOccupationModal(); });
     $('#addOccupationModal').on('click', function(e) { if (e.target.id === 'addOccupationModal') { closeOccupationModal(); } });
-    $('#newOccupationName').on('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); $('#saveOccupationBtn').trigger('click'); } });
+    $('#addProfileTagBtn').on('click', function() { openProfileTagModal(); });
+    $('#cancelProfileTagBtn').on('click', function() { closeProfileTagModal(); });
+    $('#addProfileTagModal').on('click', function(e) { if (e.target.id === 'addProfileTagModal') { closeProfileTagModal(); } });
     $('#saveOccupationBtn').on('click', function() {
         const occupationName = $('#newOccupationName').val().trim();
         if (!occupationName) {
@@ -752,12 +825,13 @@ $(document).ready(function() {
                 if (response && response.status === 'success') {
                     const optionValue = response.occupation_id ? String(response.occupation_id) : response.occupation_name;
                     const optionText = response.occupation_name;
-                    if ($('#occupation option[value="' + optionValue.replace(/(["\\])/g, '\\$1') + '"]').length === 0) {
-                        $('#occupation').append(new Option(optionText, optionValue));
+                    const $target = $('#occupation');
+                    if ($target.find('option[value="' + optionValue.replace(/(["\\])/g, '\\$1') + '"]').length === 0) {
+                        $target.append(new Option(optionText, optionValue));
                     }
-                    let selectedOccupations = $('#occupation').val() || [];
-                    selectedOccupations.push(optionValue);
-                    $('#occupation').val(selectedOccupations).trigger('change');
+                    let cur = $target.val() || [];
+                    cur.push(optionValue);
+                    $target.val(cur).trigger('change');
                     closeOccupationModal();
                     Swal.fire({ icon: 'success', title: 'Success', text: response.message || 'Occupation added successfully' });
                 } else {
@@ -771,14 +845,54 @@ $(document).ready(function() {
         });
     });
 
+    // Profile Tag Save Logic
+    $('#saveProfileTagBtn').on('click', function() {
+        const profileTagName = $('#newProfileTagName').val().trim();
+        if (!profileTagName) {
+            Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Profile Tag Name' });
+            $('#newProfileTagName').focus();
+            return;
+        }
+        const $btn = $(this);
+        $btn.prop('disabled', true);
+        $.ajax({
+            url: createOccupationUrl,
+            type: 'POST',
+            dataType: 'json',
+            data: { occupation_name: '_' + profileTagName },
+            success: function(response) {
+                if (response && response.status === 'success') {
+                    const optionValue = response.occupation_id ? String(response.occupation_id) : '_' + profileTagName;
+                    const optionText = response.occupation_name;
+                    const $target = $('#profile_tags');
+                    if ($target.find('option[value="' + optionValue.replace(/(["\\])/g, '\\$1') + '"]').length === 0) {
+                        $target.append(new Option(optionText, optionValue));
+                    }
+                    let cur = $target.val() || [];
+                    cur.push(optionValue);
+                    $target.val(cur).trigger('change');
+                    closeProfileTagModal();
+                    Swal.fire({ icon: 'success', title: 'Success', text: response.message || 'Profile Tag added successfully' });
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Error', text: (response && response.message) ? response.message : 'Unable to add profile tag' });
+                }
+            },
+            error: function() {
+                Swal.fire({ icon: 'error', title: 'Error', text: 'Unable to add profile tag' });
+            },
+            complete: function() {
+                $btn.prop('disabled', false);
+            }
+        });
+    });
+
     // --- Add New Keyword ---
     function openKeywordModal() { $('#addNewKeywordModal').css('display', 'flex'); $('#newKeywordTransliteration').val('').focus(); }
     function closeKeywordModal() { $('#addNewKeywordModal').hide(); }
     $('#addNewKeywordBtn').on('click', openKeywordModal);
     $('#cancelAddNewKeyword').on('click', closeKeywordModal);
     $('#addNewKeywordModal').on('click', function(e) { if (e.target.id === 'addNewKeywordModal') { closeKeywordModal(); } });
-    $('#newKeywordTransliteration').on('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); $('#addKeywordConfirm').trigger('click'); } });
-    $('#addKeywordConfirm').on('click', function() {
+        $('#addKeywordConfirm').on('click', function() {
         const keyword = $('#newKeywordTransliteration').val().trim();
         if (!keyword) {
             Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Keyword' });
@@ -821,8 +935,7 @@ $(document).ready(function() {
     $('#addNewSongBtn').on('click', openSongModal);
     $('#cancelAddNewSong').on('click', closeSongModal);
     $('#addNewSongModal').on('click', function(e) { if (e.target.id === 'addNewSongModal') { closeSongModal(); } });
-    $('#newSongTitle').on('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); $('#addSongConfirm').trigger('click'); } });
-    $('#addSongConfirm').on('click', function() {
+        $('#addSongConfirm').on('click', function() {
         const songTitle = $('#newSongTitle').val().trim();
         if (!songTitle) {
             Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Song Title' });
@@ -865,8 +978,7 @@ $(document).ready(function() {
     $('#addNewPoemBtn').on('click', openPoemModal);
     $('#cancelAddNewPoem').on('click', closePoemModal);
     $('#addNewPoemModal').on('click', function(e) { if (e.target.id === 'addNewPoemModal') { closePoemModal(); } });
-    $('#newPoemTitle').on('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); $('#addPoemConfirm').trigger('click'); } });
-    $('#addPoemConfirm').on('click', function() {
+        $('#addPoemConfirm').on('click', function() {
         const poemTitle = $('#newPoemTitle').val().trim();
         if (!poemTitle) {
             Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Poem Title' });
@@ -909,8 +1021,7 @@ $(document).ready(function() {
     $('#addNewReflectionBtn').on('click', openReflectionModal);
     $('#cancelAddNewReflection').on('click', closeReflectionModal);
     $('#addNewReflectionModal').on('click', function(e) { if (e.target.id === 'addNewReflectionModal') { closeReflectionModal(); } });
-    $('#newReflectionTitle').on('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); $('#addReflectionConfirm').trigger('click'); } });
-    $('#addReflectionConfirm').on('click', function() {
+        $('#addReflectionConfirm').on('click', function() {
         const reflectionTitle = $('#newReflectionTitle').val().trim();
         if (!reflectionTitle) {
             Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Reflection Title' });
@@ -953,8 +1064,7 @@ $(document).ready(function() {
     $('#addNewFilmBtn').on('click', openFilmModal);
     $('#cancelAddNewFilm').on('click', closeFilmModal);
     $('#addNewFilmModal').on('click', function(e) { if (e.target.id === 'addNewFilmModal') { closeFilmModal(); } });
-    $('#newFilmTitle').on('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); $('#addFilmConfirm').trigger('click'); } });
-    $('#addFilmConfirm').on('click', function() {
+        $('#addFilmConfirm').on('click', function() {
         const filmTitle = $('#newFilmTitle').val().trim();
         if (!filmTitle) {
             Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Film Title' });
@@ -997,8 +1107,7 @@ $(document).ready(function() {
     $('#addNewEpisodeBtn').on('click', openEpisodeModal);
     $('#cancelAddNewEpisode').on('click', closeEpisodeModal);
     $('#addNewEpisodeModal').on('click', function(e) { if (e.target.id === 'addNewEpisodeModal') { closeEpisodeModal(); } });
-    $('#newEpisodeTitle').on('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); $('#addEpisodeConfirm').trigger('click'); } });
-    $('#addEpisodeConfirm').on('click', function() {
+        $('#addEpisodeConfirm').on('click', function() {
         const episodeTitle = $('#newEpisodeTitle').val().trim();
         if (!episodeTitle) {
             Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Episode Title' });
@@ -1146,25 +1255,12 @@ $(document).ready(function() {
         for (var instance in CKEDITOR.instances) {
             CKEDITOR.instances[instance].updateElement();
         }
+        // Only fields marked with red `*` in the form are required.
         const fields = [
-            { id: 'first_name', name: 'First Name', type: 'input' },
-            { id: 'middle_name', name: 'Middle Name', type: 'input' },
-            { id: 'last_name', name: 'Last Name', type: 'input' },
-            { id: 'occupation', name: 'Occupation', type: 'multiselect' },
-            { id: 'profile', name: 'Profile Tags', type: 'textarea' },
-            { id: 'thumbnail_excerpt', name: 'Thumbnail Excerpt', type: 'input' },
-            { id: 'about', name: 'About', type: 'textarea' },
-            { id: 'keywords', name: 'Keywords', type: 'multiselect' },
-            { id: 'songs', name: 'Songs', type: 'multiselect' },
-            { id: 'reflections', name: 'Reflections', type: 'multiselect' },
-            { id: 'poems', name: 'Poems', type: 'multiselect' },
-            { id: 'films', name: 'Films', type: 'multiselect' },
-            { id: 'film_episode', name: 'Film Episode', type: 'multiselect' },
-            { id: 'display', name: 'Display in People Page', type: 'select' },
-            { id: 'publish', name: 'Publish Status', type: 'select' },
-            { id: 'meta_title', name: 'Meta Title', type: 'input' },
-            { id: 'meta_keywords', name: 'Meta Keywords', type: 'input' },
-            { id: 'meta_description', name: 'Meta Description', type: 'textarea' }
+            { id: 'first_name',        name: 'First Name',        type: 'input' },
+            { id: 'last_name',         name: 'Last Name',         type: 'input' },
+            { id: 'occupation',        name: 'Occupation',        type: 'multiselect' },
+            { id: 'thumbnail_excerpt', name: 'Thumbnail Excerpt', type: 'input' }
         ];
         for (let field of fields) {
             let element = document.getElementById(field.id);
@@ -1199,4 +1295,32 @@ $(document).ready(function() {
 });
 </script>
 
+<script>
+(function () {
+  function bindEdit(btnId, opts) {
+    var b = document.getElementById(btnId);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      if (window.__adminEditOption) window.__adminEditOption(opts);
+      else alert('Edit helper not loaded');
+    });
+  }
+  var BASE = '<?php echo base_url(); ?>';
+  bindEdit('editOccupationBtn', {
+    selectId: '#occupation', modalId: '#addOccupationModal', addSaveBtnId: '#saveOccupationBtn',
+    updateUrl: BASE + 'person/occupation/update', editTitle: 'Edit Occupation',
+    fields: [{ inputId: '#newOccupationName', postKey: 'occupation_name', primary: true }]
+  });
+  bindEdit('editProfileTagBtn', {
+    selectId: '#profile_tags', modalId: '#addProfileTagModal', addSaveBtnId: '#saveProfileTagBtn',
+    updateUrl: BASE + 'person/occupation/update', editTitle: 'Edit Profile Tag',
+    fields: [{ inputId: '#newProfileTagName', postKey: 'occupation_name', primary: true }]
+  });
+  bindEdit('editKeywordBtn', {
+    selectId: '#keywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#addKeywordConfirm',
+    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
+    fields: [{ inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }]
+  });
+})();
+</script>
 <?php include('inc/footer.php'); ?>

@@ -39,11 +39,11 @@ include('inc/sidebar.php');
             <?php endif; ?>
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="wordsTableCount">0</span></div>
                     <table id="wordsTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
-                                <th>Date of Upload</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Word</th>
                                 <th>Keywords (y/n)</th>
                                 <th>Glossary Term (y/n)</th>
@@ -78,11 +78,14 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no', title: 'Sl. No.' },
-            { data: 'date_of_upload', title: 'Date of Upload' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'word_original', title: 'Word' },
             { data: 'meta_keywords', title: 'Keywords (y/n)', render: function(data) { return data ? 'Yes' : 'No'; } },
-            { data: 'is_root_word', title: 'Glossary Term (y/n)', render: function(data) { return data == 'true' ? 'Yes' : 'No'; } },
+            { data: 'is_root_word', title: 'Glossary Term (y/n)', render: function(data) {
+                if (data === 1 || data === '1' || data === true) return 'Yes';
+                if (typeof data === 'string' && ['true','yes','y','1'].indexOf(data.toLowerCase()) !== -1) return 'Yes';
+                return 'No';
+            } },
             // { data: 'publish', title: 'Published', render: function(data) { return data == 'true' ? 'Yes' : 'No'; } },
             {
                 data: 'id',
@@ -97,6 +100,7 @@ $(document).ready(function() {
                 }
             }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('wordsTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

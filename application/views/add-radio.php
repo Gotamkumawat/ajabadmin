@@ -4,7 +4,6 @@ include('inc/header.php');
 include('inc/sidebar.php');
 ?>
 <head>
-        <link rel="stylesheet" href="/common/lib/angular-multi-select/angular-multi-select.css">
 
 </head>
 <style>
@@ -241,7 +240,7 @@ include('inc/sidebar.php');
         <div class="container-fluid">
             <div class="row mb-2">
                 <div class="col-sm-6">
-                    <h1>Add Radio Player</h1>
+                    <h1>Add Radio Track</h1>
                 </div>
                 <div class="col-sm-6">
                     <ol class="breadcrumb float-sm-right">
@@ -271,10 +270,10 @@ include('inc/sidebar.php');
                     <!-- <form name="radioForm" method="post" action="<?php echo base_url('RadioController/save'); ?>"> -->
                         
                     <!-- <form action="<?= base_url('radio/save') ?>" method="post"> -->
-                        <form action="<?= base_url('radio/save') ?>" method="post" enctype="multipart/form-data">
+                        <form id="radioForm" action="<?= base_url('radio/save') ?>" method="post" enctype="multipart/form-data">
                             
 
-                            <?php if (!empty($radio->id)): ?>
+                            <?php if (!empty($radio) && !empty($radio->id)): ?>
                                 <input type="hidden" name="id" value="<?= $radio->id ?>">
                             <?php endif; ?>
                             <?php if ($this->session->flashdata('success')): ?>
@@ -301,8 +300,6 @@ include('inc/sidebar.php');
                                 </script>
                             <?php endif; ?>
                             <!-- Rest of form fields -->
-                            <input type="hidden" name="singer_name" value="<?= isset($radio->singer_name) ? $radio->singer_name : '' ?>" class="form-control">
-                            <!-- same for all other fields -->
                     <div class="row">
                             <div class="col-md-6 col-sm-6 col-xs-12">
                             	<div class="row">
@@ -320,12 +317,52 @@ include('inc/sidebar.php');
                         <!-- /.row -->
 
                         <!-- Singers, Words, Reflections, Couplets -->
+                        <?php
+                        // Same pattern as add-song.php "Related Songs" — proven to work.
+                        $radioSongRows = $this->db->query("
+                            SELECT
+                                s.id,
+                                COALESCE(NULLIF(TRIM(ts.english_transliteration), ''), NULLIF(TRIM(ts.original_title), ''), NULLIF(TRIM(tu.english_transliteration), ''), NULLIF(TRIM(tu.original_title), ''), CONCAT('Song #', s.id)) AS Songtitle_transliteration
+                            FROM song s
+                            LEFT JOIN title ts ON ts.id = s.song_title_id
+                            LEFT JOIN title tu ON tu.id = s.umbrella_title_id
+                            ORDER BY LOWER(TRIM(COALESCE(ts.english_transliteration, ts.original_title, tu.english_transliteration, tu.original_title, ''))) ASC, s.id DESC
+                        ")->result();
+                        // DEBUG — write count to file
+                        @file_put_contents(FCPATH . 'add_radio_debug.log',
+                            "[".date('Y-m-d H:i:s')."] radioSongRows count=" . (is_array($radioSongRows) ? count($radioSongRows) : 'NOT ARRAY')
+                            . " | last_error=" . print_r($this->db->error(), true)
+                            . "\n", FILE_APPEND);
+                        $selSongId = '';
+                        if (!empty($radio)) {
+                            if (isset($radio->song_id) && (int) $radio->song_id > 0) {
+                                $selSongId = (string) (int) $radio->song_id;
+                            } elseif (!empty($radio->songs)) {
+                                $bits = array_filter(array_map('trim', explode(',', (string) $radio->songs)));
+                                $selSongId = !empty($bits) ? (string) (int) $bits[0] : '';
+                            }
+                            // Fallback: lookup by song_name when no FK present (legacy / migrated radio rows)
+                            if ($selSongId === '' && isset($radio->song_name) && trim((string)$radio->song_name) !== '') {
+                                $songName = trim((string)$radio->song_name);
+                                foreach ($radioSongRows as $sr) {
+                                    $opt = trim((string)$sr->Songtitle_transliteration);
+                                    if ($opt !== '' && strcasecmp($opt, $songName) === 0) {
+                                        $selSongId = (string)(int)$sr->id;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        ?>
                         <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">1. Song Name <span style="color:red">*</span></label>
-                            <div class="col-md-4">
-                                <select name="song_id" class="form-control" required>
-                                    <option value="">Select Song</option>
-                                    <!-- Add options dynamically from songs table -->
+                            <label class="col-md-2 col-form-label">1. Select Song <span style="color:red">*</span></label>
+                            <div class="col-md-6">
+                                <select name="song_id" id="radioSongSelect" class="form-control select2" multiple="multiple" data-skip-select2="true" data-single-pick="true" data-placeholder="Select Song" style="width:100%;">
+                                    <?php foreach ($radioSongRows as $sr): ?>
+                                        <option value="<?= (int) $sr->id ?>" <?= ((string) $sr->id === $selSongId) ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars((string) $sr->Songtitle_transliteration) ?>
+                                        </option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                         </div>
@@ -333,37 +370,29 @@ include('inc/sidebar.php');
                             <div class="form-group row align-items-center">
                                 <label class="col-md-2 col-form-label">⊙ Singer Name</label>
                                 <div class="col-md-4">
-                                    <input type="text" name="singer_name" value="<?= isset($radio->singer_name) ? $radio->singer_name : '' ?>" class="form-control" readonly>
+                                    <input type="text" name="singer_name" id="radioDisplaySinger" value="<?= (!empty($radio) && isset($radio->singer_name)) ? htmlspecialchars($radio->singer_name) : '' ?>" class="form-control" readonly>
                                 </div>
                             </div>
                             <div class="form-group row align-items-center">
                                 <label class="col-md-2 col-form-label">⊙ Location</label>
                                 <div class="col-md-4">
-                                    <input type="text" name="location" value="<?= isset($radio->location) ? $radio->location : '' ?>" class="form-control" readonly>
+                                    <input type="text" name="location" id="radioDisplayLocation" value="<?= (!empty($radio) && isset($radio->location)) ? htmlspecialchars($radio->location) : '' ?>" class="form-control" readonly>
                                 </div>
                             </div>
                             <div class="form-group row align-items-center">
                                 <label class="col-md-2 col-form-label">⊙ Year</label>
                                 <div class="col-md-4">
-                                    <input type="text" name="year" value="<?= isset($radio->year) ? $radio->year : '' ?>" class="form-control" readonly>
+                                    <input type="text" name="year" id="radioDisplayYear" value="<?= (!empty($radio) && isset($radio->year)) ? htmlspecialchars($radio->year) : '' ?>" class="form-control" readonly>
                                 </div>
                             </div>
                         </div>
                         <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">2. Radio Excerpt Text</label>
                             <div class="col-md-4">
-                                <input type="text" name="radio_excerpt" value="<?= isset($radio->thumbnail_excerpt) ? $radio->thumbnail_excerpt : '' ?>" class="form-control" readonly>
+                                <input type="text" name="radio_excerpt" id="radioExcerptInput" value="<?= (!empty($radio) && isset($radio->radio_excerpt)) ? htmlspecialchars($radio->radio_excerpt) : '' ?>" class="form-control">
                             </div>
                         </div>
-                        <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">3. Upload Song MP3 File <span style="color:red">*</span></label>
-                            <div class="col-md-4">
-                                <input type="file" name="mp3_file" class="form-control" required>
-                                <?php if (!empty($radio->mp3_file)): ?>
-                                    <a href="<?= base_url('uploads/radio/' . $radio->mp3_file) ?>" target="_blank" style="display:block;margin-top:8px;color:#007bff;font-weight:bold;">Existing MP3 File</a>
-                                <?php endif; ?>
-                            </div>
-                        </div>
+                        <input type="hidden" name="old_mp3_file" value="<?= (!empty($radio) && !empty($radio->upload_song_mp3_file)) ? htmlspecialchars($radio->upload_song_mp3_file) : '' ?>">
                         <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">4. Playlist</label>
                             <div class="col-md-4 d-flex align-items-end" style="gap:10px;">
@@ -371,10 +400,17 @@ include('inc/sidebar.php');
                                     <?php
                                         // Fetch playlists directly (ordered by name)
                                         $playlists = $this->db->order_by('name', 'ASC')->get('playlist')->result();
-                                        $selectedPlaylist = isset($radio->playlist_id) ? $radio->playlist_id : '';
+                                        $selectedPlaylist = '';
+                                        if (!empty($radio)) {
+                                            if (isset($radio->playlist_id) && $radio->playlist_id !== '' && $radio->playlist_id !== null) {
+                                                $selectedPlaylist = $radio->playlist_id;
+                                            } elseif (!empty($radio->playlists)) {
+                                                $pbits = array_filter(array_map('trim', explode(',', (string) $radio->playlists)));
+                                                $selectedPlaylist = !empty($pbits) ? $pbits[0] : '';
+                                            }
+                                        }
                                     ?>
-                                    <select name="playlist_id" id="playlistSelect" class="form-control">
-                                        <option value="">Select Playlist</option>
+                                    <select name="playlist_id" id="playlistSelect" class="form-control select2" multiple="multiple" data-skip-select2="true" data-single-pick="true" data-placeholder="Select Playlist" style="width:100%;">
                                         <?php if (!empty($playlists)): ?>
                                             <?php foreach ($playlists as $pl): ?>
                                                 <option value="<?= $pl->id; ?>" <?= ($selectedPlaylist == $pl->id) ? 'selected' : ''; ?>>
@@ -416,8 +452,8 @@ include('inc/sidebar.php');
                             <div class="col-md-4">
                                 <select name="publish" class="form-control">
                                     <option value="">Select</option>
-                                    <option value="1" <?= (isset($radio->publish) && $radio->publish == "1") ? 'selected' : '' ?>>Yes</option>
-                                    <option value="0" <?= (isset($radio->publish) && $radio->publish == "0") ? 'selected' : '' ?>>No</option>
+                                    <option value="1" <?= (!empty($radio) && isset($radio->publish) && $radio->publish == "1") ? 'selected' : '' ?>>Yes</option>
+                                    <option value="0" <?= (!empty($radio) && isset($radio->publish) && $radio->publish == "0") ? 'selected' : '' ?>>No</option>
                                 </select>
                             </div>
                         </div>
@@ -483,16 +519,17 @@ include('inc/sidebar.php');
                 
                 </script>
              <script>
-                // Year dropdown fill karna
-                const yearSelect = document.getElementById('yearSelect');
-                const currentYear = new Date().getFullYear();
-
-                for(let y = currentYear; y >= 1900; y--){
-                    const option = document.createElement('option');
-                    option.value = y;
-                    option.text = y;
-                    yearSelect.appendChild(option);
-                }
+                (function () {
+                    const yearSelect = document.getElementById('yearSelect');
+                    if (!yearSelect) return;
+                    const currentYear = new Date().getFullYear();
+                    for (let y = currentYear; y >= 1900; y--) {
+                        const option = document.createElement('option');
+                        option.value = y;
+                        option.text = y;
+                        yearSelect.appendChild(option);
+                    }
+                })();
             </script>
 <script src="https://cdn.ckeditor.com/4.22.1/standard-all/ckeditor.js"></script>
 
@@ -508,35 +545,48 @@ include('inc/sidebar.php');
                             ];
 
                             editorIDs.forEach(function (id) {
-                                CKEDITOR.replace(id, {
-                                    height: 200,
-                                    extraPlugins: 'colorbutton,font,justify',
-                                    toolbar: [
-                                        { name: 'document', items: [ 'Source', '-', 'NewPage', 'Preview' ] },
-                                        { name: 'basicstyles', items: [ 'Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat' ] },
-                                        { name: 'paragraph', items: [ 'NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock' ] },
-                                        { name: 'insert', items: [ 'Image', 'Table', 'HorizontalRule', 'SpecialChar' ] },
-                                        { name: 'styles', items: [ 'Styles', 'Format', 'Font', 'FontSize' ] },
-                                        { name: 'colors', items: [ 'TextColor', 'BGColor' ] }
-                                    ]
-                                });
-
-                                // AngularJS model sync
-                                CKEDITOR.instances[id].on('change', function () {
-                                    var data = CKEDITOR.instances[id].getData();
-                                    var scope = angular.element(document.querySelector('[id="' + id + '"]')).scope();
-                                    scope.$apply(function () {
-                                        if (id === 'songLyricsOriginal') {
-                                            scope.song.songText.original = data;
-                                        } else if (id === 'songLyricsTranslated') {
-                                            scope.song.songText.translated = data;
-                                        } else if (id === 'songLyricsNotes') {
-                                            scope.song.songText.notes = data;
-                                        } else if (id === 'songLyricsMeaning') {
-                                            scope.song.songText.meaning = data;
-                                        }
+                                // Guard: only init CKEditor if the textarea exists on this page
+                                var el = document.getElementById(id);
+                                if (!el || el.tagName !== 'TEXTAREA') {
+                                    return;
+                                }
+                                if (typeof CKEDITOR === 'undefined' || !CKEDITOR.replace) {
+                                    return;
+                                }
+                                try {
+                                    CKEDITOR.replace(id, {
+                                        height: 200,
+                                        extraPlugins: 'colorbutton,font,justify',
+                                        toolbar: [
+                                            { name: 'document', items: [ 'Source', '-', 'NewPage', 'Preview' ] },
+                                            { name: 'basicstyles', items: [ 'Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat' ] },
+                                            { name: 'paragraph', items: [ 'NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock' ] },
+                                            { name: 'insert', items: [ 'Image', 'Table', 'HorizontalRule', 'SpecialChar' ] },
+                                            { name: 'styles', items: [ 'Styles', 'Format', 'Font', 'FontSize' ] },
+                                            { name: 'colors', items: [ 'TextColor', 'BGColor' ] }
+                                        ]
                                     });
-                                });
+                                } catch (e) {
+                                    console.warn('CKEditor init skipped for', id, e);
+                                    return;
+                                }
+
+                                // AngularJS model sync — also guarded
+                                if (CKEDITOR.instances && CKEDITOR.instances[id] && typeof CKEDITOR.instances[id].on === 'function') {
+                                    CKEDITOR.instances[id].on('change', function () {
+                                        var data = CKEDITOR.instances[id].getData();
+                                        if (typeof angular === 'undefined') return;
+                                        var $el = angular.element(document.querySelector('[id="' + id + '"]'));
+                                        var scope = $el && $el.scope ? $el.scope() : null;
+                                        if (!scope || !scope.song || !scope.song.songText) return;
+                                        scope.$apply(function () {
+                                            if (id === 'songLyricsOriginal') scope.song.songText.original = data;
+                                            else if (id === 'songLyricsTranslated') scope.song.songText.translated = data;
+                                            else if (id === 'songLyricsNotes') scope.song.songText.notes = data;
+                                            else if (id === 'songLyricsMeaning') scope.song.songText.meaning = data;
+                                        });
+                                    });
+                                }
                             });
 
                         }, 500);
@@ -653,57 +703,67 @@ document.addEventListener('keypress', function(event) {
 </script>
 
 <script>
-    document.getElementById('radioForm').addEventListener('submit', function(e) {
-        e.preventDefault(); // stop form submit
-
-        const fields = [
-            { id: 'singer_name', name: 'Singer Name' },
-            { id: 'singer_profile', name: 'Singer Profile' },
-            { id: 'profile_url', name: 'Profile link' },
-            { id: 'song_name', name: 'Song Name' },
-            { id: 'location', name: 'Location' },
-            { id: 'yearSelect', name: 'Year' },
-            { id: 'song_url', name: 'Song Link' },
-            { id: 'buy_cd_url', name: 'Buy CD Link' },
-            { id: 'download_url', name: 'Download Link' },
-            { id: 'upload_singer_image', name: 'Upload Singer Image' },
-            { id: 'upload_song_mp3_file', name: 'Upload Song MP3 File' },
-            { id: 'existing_selection', name: 'Existing Selection' },
-            { id: 'radio_excerpt', name: 'Radio Excerpt Text' }, 
-            { id: 'playlists', name: 'Playlists' },
-            { id: 'playlist_title', name: 'Playlist Title' },          
-            { id: 'songLyricsOriginal', name: 'About' },
-            { id: 'keywords', name: 'Keywords' },
-            { id: 'songs', name: 'Songs' },
-            { id: 'reflections', name: 'Reflections' },
-            { id: 'poems', name: 'Poems' },
-            { id: 'people', name: 'People' },
-            { id: 'films', name: 'Films' },
-            { id: 'film_episode', name: 'Film Episode' },
-            { id: 'display_in_people_page', name: 'Display in People Page' },
-            { id: 'publish', name: 'Publish' },
-            { id: 'meta_title', name: 'Meta Title' },
-            { id: 'meta_keyword', name: 'Meta Keyword' },
-            { id: 'meta_description', name: 'Meta Description' }
-        ];
-
-        for (let field of fields) {
-            let value = document.getElementById(field.id).value.trim();
-            if (value === '') {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Missing Input',
-                    text: `Please fill the ${field.name}`,
-                    confirmButtonText: 'OK'
-                });
-                document.getElementById(field.id).focus();
-                return false; // stop submission
+$(function () {
+    var metaUrl = <?= json_encode(base_url('radio/ajax_song_meta')) ?>;
+    function applySongMeta(id, opts) {
+        opts = opts || {};
+        var fillExcerpt = opts.fillExcerpt !== false;
+        if (!id) return;
+        fetch(metaUrl + '?id=' + encodeURIComponent(id))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) return;
+                var s = document.getElementById('radioDisplaySinger');
+                var loc = document.getElementById('radioDisplayLocation');
+                var yr = document.getElementById('radioDisplayYear');
+                var ex = document.getElementById('radioExcerptInput');
+                if (s) s.value = data.singer_name || '';
+                if (loc) loc.value = data.location || '';
+                if (yr) yr.value = data.year || '';
+                if (ex && fillExcerpt) ex.value = data.radio_excerpt || '';
+            })
+            .catch(function () {});
+    }
+    var $song = $('#radioSongSelect');
+    if ($song.length) {
+        // Treat as single-pick: when user selects a new value, deselect any prior selection
+        $song.on('change', function () {
+            var vals = $(this).val();
+            if (Array.isArray(vals) && vals.length > 1) {
+                // keep only the most recent selection
+                var keep = vals[vals.length - 1];
+                $(this).val([keep]);
+                if ($(this).data('bs.multiselect') && $.fn.multiselect) {
+                    $(this).multiselect('refresh');
+                }
+                vals = [keep];
             }
+            var v = Array.isArray(vals) ? (vals[0] || '') : (vals || '');
+            applySongMeta(v, { fillExcerpt: true });
+        });
+        var initVal = $song.val();
+        if (initVal && (Array.isArray(initVal) ? initVal.length : true)) {
+            var ex0 = document.getElementById('radioExcerptInput');
+            var skipEx = ex0 && ex0.value.trim() !== '';
+            var firstVal = Array.isArray(initVal) ? initVal[0] : initVal;
+            applySongMeta(firstVal, { fillExcerpt: !skipEx });
         }
-
-        // If all filled, submit the form
-        this.submit();
-    });
+    }
+    // Single-pick playlist
+    var $pl = $('#playlistSelect');
+    if ($pl.length) {
+        $pl.on('change', function () {
+            var vals = $(this).val();
+            if (Array.isArray(vals) && vals.length > 1) {
+                var keep = vals[vals.length - 1];
+                $(this).val([keep]);
+                if ($(this).data('bs.multiselect') && $.fn.multiselect) {
+                    $(this).multiselect('refresh');
+                }
+            }
+        });
+    }
+});
 </script>
 <?php 
 include('inc/footer.php');

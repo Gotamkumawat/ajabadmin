@@ -152,7 +152,7 @@ class NewsController extends CI_Controller {
 
     private function handle_file_upload($field_name) {
         if (!empty($_FILES[$field_name]['name'])) {
-            $config['upload_path'] = './uploads/news/';
+            $config['upload_path'] = FCPATH . 'uploads/news/';
             $config['allowed_types'] = 'gif|jpg|jpeg|png|webp';
             $config['max_size'] = 5120; // 5MB
             $config['file_name'] = time() . '_' . $_FILES[$field_name]['name'];
@@ -182,14 +182,11 @@ class NewsController extends CI_Controller {
                 $_FILES['file']['error'] = $_FILES[$field_name]['error'][$i];
                 $_FILES['file']['size'] = $_FILES[$field_name]['size'][$i];
 
-                $config['upload_path'] = './uploads/news/';
+                $config['upload_path'] = FCPATH . 'uploads/news/';
+                if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
                 $config['allowed_types'] = 'gif|jpg|jpeg|png|webp';
                 $config['max_size'] = 5120;
                 $config['file_name'] = time() . '_' . $i . '_' . $_FILES['file']['name'];
-
-                if (!is_dir($config['upload_path'])) {
-                    mkdir($config['upload_path'], 0777, true);
-                }
 
                 $this->load->library('upload', $config);
                 
@@ -207,28 +204,36 @@ class NewsController extends CI_Controller {
         $sl_no = 1;
 
         foreach ($news as $e) {
-            // Try to get popup item titles from news_content JSON
-            $popup_titles = [];
+            // Parse news_content JSON for sequence_order and show_on_home
+            $sequence_orders = [];
+            $show_in_popup_flags = [];
             if (!empty($e->news_content)) {
                 $items = json_decode($e->news_content, true);
                 if (is_array($items)) {
                     foreach ($items as $item) {
-                        if (!empty($item['title'])) {
-                            $popup_titles[] = $item['title'];
+                        if (isset($item['sequence_order']) && trim((string) $item['sequence_order']) !== '') {
+                            $sequence_orders[] = trim((string) $item['sequence_order']);
+                        }
+                        if (isset($item['show_on_home'])) {
+                            $show_in_popup_flags[] = (string) $item['show_on_home'] === '1' ? 'Yes' : 'No';
                         }
                     }
                 }
             }
-            $popup_item_display = !empty($popup_titles) ? implode(', ', $popup_titles) : '';
+            $sequence_display = !empty($sequence_orders) ? implode(', ', $sequence_orders) : '—';
+            $display_in_popup = !empty($show_in_popup_flags)
+                ? (in_array('Yes', $show_in_popup_flags, true) ? 'Yes' : 'No')
+                : ($e->publish_status ? 'Yes' : 'No');
+
             $data[] = [
-                'id' => $e->id, // Use actual database ID
-                'news_title' => $e->news_title,
-                'popup_item' => $popup_item_display,
-                'published' => $e->publish_status ? 'Yes' : 'No', // Use publish_status for display
-                'action' => '<a href="' . base_url('NewsController/edit/' . $e->id) . '" class="btn btn-sm btn-primary">Edit</a> 
+                'sl_no' => $sl_no++,
+                'id' => $e->id,
+                'news_title' => trim((string) ($e->news_title ?? '')) !== '' ? $e->news_title : '—',
+                'sequence_order' => $sequence_display,
+                'display_in_popup' => $display_in_popup,
+                'action' => '<a href="' . base_url('NewsController/edit/' . $e->id) . '" class="btn btn-sm btn-primary">Edit</a>
                              <a href="' . base_url('NewsController/delete/' . $e->id) . '" class="btn btn-sm btn-danger">Delete</a>'
             ];
-            $sl_no++;
         }
 
         echo json_encode(['data' => $data]);

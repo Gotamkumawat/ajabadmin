@@ -31,10 +31,11 @@ include 'inc/sidebar.php';
 
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="cartoonTableCount">0</span></div>
                     <table id="cartoonTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Title</th>
                                 <th>Thumbnail</th>
                                 <th>Published</th>
@@ -84,12 +85,13 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'title' },
             { data: 'thumbnail_url' },
             { data: 'is_publish' },
             { data: 'action' }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('cartoonTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

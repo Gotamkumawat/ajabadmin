@@ -549,19 +549,34 @@ if (!function_exists('couplet_parse_id_list')) {
                         return array_map('trim', explode(',', (string)$rawValue));
                     };
 
-                    $selected_related_keywords = [];
-                    if (isset($couplet['relatedkeywords'])) {
-                        $selected_related_keywords = $readSelectedValues($couplet['relatedkeywords']);
-                    } elseif (isset($couplet['related_keywords'])) {
-                        $selected_related_keywords = $readSelectedValues($couplet['related_keywords']);
-                    }
+                    // Generic helper: read IDs from junction table for this couplet, fallback to legacy CSV/serialized field
+                    $coupletId = (isset($couplet['id']) && (int)$couplet['id'] > 0) ? (int)$couplet['id'] : 0;
+                    $readJunction = function ($table, $fkCol, $legacyField = null) use ($coupletId, $couplet, $readSelectedValues) {
+                        $ids = [];
+                        if ($coupletId > 0 && $this->db->table_exists($table)) {
+                            $jr = $this->db->select($fkCol)->from($table)->where('couplet_id', $coupletId)->get()->result_array();
+                            foreach ($jr as $r) { if (!empty($r[$fkCol])) { $ids[] = (string)(int)$r[$fkCol]; } }
+                            $ids = array_values(array_unique($ids));
+                        }
+                        if (empty($ids) && $legacyField !== null && isset($couplet[$legacyField])) {
+                            $ids = $readSelectedValues($couplet[$legacyField]);
+                        }
+                        return $ids;
+                    };
 
-                    $selected_related_songs = isset($couplet['related_songs']) ? $readSelectedValues($couplet['related_songs']) : [];
-                    $selected_reflections = isset($couplet['related_reflections']) ? $readSelectedValues($couplet['related_reflections']) : [];
-                    $selected_related_poems = isset($couplet['related_poems']) ? $readSelectedValues($couplet['related_poems']) : [];
-                    $selected_related_people = isset($couplet['related_people']) ? $readSelectedValues($couplet['related_people']) : [];
-                    $selected_related_films = isset($couplet['related_films']) ? $readSelectedValues($couplet['related_films']) : [];
-                    $selected_related_film_episodes = isset($couplet['related_film_episodes']) ? $readSelectedValues($couplet['related_film_episodes']) : [];
+                    $selected_related_keywords      = $readJunction('couplet_word',           'word_id',            'keywords');
+                    $selected_related_songs         = $readJunction('couplet_song',           'song_id',            'related_songs');
+                    $selected_reflections           = $readJunction('couplet_reflection',     'reflection_id',      'related_reflections');
+                    $selected_related_poems         = $readJunction('couplet_relatedcouplet', 'related_couplet_id', 'related_poems');
+                    $selected_related_films         = $readJunction('couplet_film',           'film_id',            'related_films');
+                    $selected_related_film_episodes = $readJunction('couplet_filmepisode',    'film_episode_id',    'related_film_episodes');
+                    $selected_related_people        = $readJunction('couplet_people',         'person_id',          'related_people');
+
+                    // All people, A–Z by full name (same ordering for Poet / Attributed Poet / Translators / Related people).
+                    $all_people_rows = $this->db->query("
+                        SELECT id, first_name, middle_name, last_name FROM person
+                        ORDER BY LOWER(TRIM(CONCAT_WS(' ', IFNULL(first_name,''), IFNULL(middle_name,''), IFNULL(last_name,'')))) ASC, id ASC
+                    ")->result();
                 ?>
                   <!-- <form name="CoupletForm" id="coupletdForm" method="post" action="<?php echo base_url('CoupletController/save'); ?>">                         -->
                       <form method="post" action="<?= isset($form_action) ? $form_action : base_url('couplet/save'); ?>" enctype="multipart/form-data" id="coupletForm">
@@ -601,11 +616,26 @@ if (!function_exists('couplet_parse_id_list')) {
                                 <div class="form-group">
                                     <label>Poet <span style="color:red">*</span></label>
                                     <div style="display: flex; align-items: center; gap: 10px;">
+                                        <?php
+                                            // Build pre-selected poet IDs: from couplet.poet_id (INT), couplet.poet (legacy serialized), and couplet_poet junction
+                                            $preSelectedPoets = [];
+                                            if (isset($couplet) && is_array($couplet)) {
+                                                if (!empty($couplet['poet_id'])) { $preSelectedPoets[] = (string)(int)$couplet['poet_id']; }
+                                                if (!empty($couplet['poet'])) {
+                                                    $u = @unserialize($couplet['poet']);
+                                                    if (is_array($u)) { foreach ($u as $v) { $preSelectedPoets[] = (string)(int)$v; } }
+                                                }
+                                                $cId = (int)($couplet['id'] ?? 0);
+                                                if ($cId > 0 && $this->db->table_exists('couplet_poet')) {
+                                                    $jr = $this->db->select('poet_id')->from('couplet_poet')->where('couplet_id', $cId)->get()->result_array();
+                                                    foreach ($jr as $r) { if (!empty($r['poet_id'])) { $preSelectedPoets[] = (string)(int)$r['poet_id']; } }
+                                                }
+                                            }
+                                            $preSelectedPoets = array_values(array_unique(array_filter($preSelectedPoets, function($x){ return $x !== '' && $x !== '0'; })));
+                                        ?>
                                         <select class="form-control select2 col-md-4" multiple="multiple" name="poet[]" id="poet" data-placeholder="Select Poet" required>
-                                            <!-- No default empty option for multi-select -->
-                                            <?php 
-                                                $poets = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person")->result();
-                                                foreach ($poets as $p) {
+                                            <?php
+                                                foreach ($all_people_rows as $p) {
                                                     $parts = [];
                                                     if (!empty(trim($p->first_name))) { $parts[] = trim($p->first_name); }
                                                     if (!empty(trim($p->middle_name))) { $parts[] = trim($p->middle_name); }
@@ -613,11 +643,13 @@ if (!function_exists('couplet_parse_id_list')) {
                                                     $fullName = implode(' ', $parts);
                                                     if ($fullName === '') { $fullName = 'Unnamed'; }
                                                     $pid = (string)$p->id;
-                                                    echo '<option value="'.htmlspecialchars($pid).'">'.htmlspecialchars($fullName).'</option>';
+                                                    $sel = in_array($pid, $preSelectedPoets, true) ? ' selected' : '';
+                                                    echo '<option value="'.htmlspecialchars($pid).'"'.$sel.'>'.htmlspecialchars($fullName).'</option>';
                                                 }
                                             ?>
                                         </select>
                                         <button type="button" class="btn btn-success btn-sm" id="addPoetBtn">Add New</button>
+                                        <button type="button" class="btn btn-primary btn-sm ml-1" id="editPoetBtn">Edit</button>
                                     </div>
                                 </div>
                             </div>
@@ -628,10 +660,22 @@ if (!function_exists('couplet_parse_id_list')) {
                                 <div class="form-group">
                                     <label>Attributed Poet</label>
                                     <div style="display: flex; align-items: center; gap: 10px;">
+                                        <?php
+                                            $preSelectedAttrPoets = [];
+                                            if (isset($couplet) && is_array($couplet) && !empty($couplet['attributed_poet'])) {
+                                                $u = @unserialize($couplet['attributed_poet']);
+                                                if (is_array($u)) { foreach ($u as $v) { $preSelectedAttrPoets[] = (string)(int)$v; } }
+                                                elseif (is_string($couplet['attributed_poet'])) {
+                                                    foreach (array_filter(array_map('trim', explode(',', $couplet['attributed_poet']))) as $v) {
+                                                        if (ctype_digit($v)) { $preSelectedAttrPoets[] = (string)(int)$v; }
+                                                    }
+                                                }
+                                            }
+                                            $preSelectedAttrPoets = array_values(array_unique(array_filter($preSelectedAttrPoets, function($x){ return $x !== '' && $x !== '0'; })));
+                                        ?>
                                         <select class="form-control select2 col-md-4" multiple="multiple" name="attributed_poet[]" id="attributed_poet" data-placeholder="Select Attributed Poet">
-                                            <option value="">Select Attributed Poet</option>
-                                            <?php 
-                                                foreach ($poets as $p) {
+                                            <?php
+                                                foreach ($all_people_rows as $p) {
                                                     $parts = [];
                                                     if (!empty(trim($p->first_name))) { $parts[] = trim($p->first_name); }
                                                     if (!empty(trim($p->middle_name))) { $parts[] = trim($p->middle_name); }
@@ -639,11 +683,13 @@ if (!function_exists('couplet_parse_id_list')) {
                                                     $fullName = implode(' ', $parts);
                                                     if ($fullName === '') { $fullName = 'Unnamed'; }
                                                     $pid = (string)$p->id;
-                                                    echo '<option value="'.htmlspecialchars($pid).'">'.htmlspecialchars($fullName).'</option>';
+                                                    $sel = in_array($pid, $preSelectedAttrPoets, true) ? ' selected' : '';
+                                                    echo '<option value="'.htmlspecialchars($pid).'"'.$sel.'>'.htmlspecialchars($fullName).'</option>';
                                                 }
                                             ?>
                                         </select>
                                         <button type="button" class="btn btn-success btn-sm" id="addAttributedPoetBtn">Add New</button>
+                                        <button type="button" class="btn btn-primary btn-sm ml-1" id="editAttributedPoetBtn">Edit</button>
                                     </div>
                                 </div>
                             </div>
@@ -670,23 +716,38 @@ if (!function_exists('couplet_parse_id_list')) {
                             </div>
 
                             <style>
+                                .translation-stack {
+                                    display: flex;
+                                    align-items: center;
+                                    margin-bottom: 18px;
+                                }
                                 .translation-stack label {
-                                    display: block !important;
-                                    float: none !important;
-                                    width: 100% !important;
-                                    margin-bottom: 8px;
+                                    flex: 0 0 220px;
+                                    max-width: 220px;
+                                    font-weight: 600;
+                                    color: #333;
+                                    margin-bottom: 0;
+                                    font-size: 15px;
+                                    padding-right: 18px;
+                                    display: block;
+                                }
+                                .translation-stack .translation-main-group {
+                                    flex: 1 1 0%;
+                                    margin-bottom: 0;
+                                    display: flex;
+                                    flex-direction: column;
+                                    gap: 8px;
                                 }
                                 .translation-stack .translation-control {
                                     display: block;
                                     width: 100%;
-                                    margin-bottom: 10px;
+                                    margin-bottom: 0;
                                     clear: both;
                                 }
-                                .translation-stack .translation-main-group {
+                                .translation-stack .translation-select-row {
                                     display: flex;
-                                    flex-direction: column;
-                                    align-items: flex-start;
-                                    gap: 8px;
+                                    align-items: center;
+                                    gap: 10px;
                                     width: 100%;
                                 }
                                 #extraCoupletTranslations {
@@ -727,17 +788,27 @@ if (!function_exists('couplet_parse_id_list')) {
                             </style>
                             <div class="row">
                                 <div class="col-12">
-                                <div class="form-group translation-stack">
-                                    <label>⊙ Translation</label>
+                                <div class="form-group translation-stack"  style="display: flex; align-items: flex-start; margin-bottom: 18px;">
+                                    
+                                    <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">⊙ Translation</div>
                                     <div class="translation-main-group translation-block">
-                                        <div class="translation-control">
-                                            <button type="button" class="btn btn-primary btn-sm" id="addCoupletTranslationBtn">Add Couplet Translation</button>
-                                        </div>
                                         <div class="translation-control translation-select-row">
+                                            <?php
+                                                $preSelectedTranslators = [];
+                                                if (isset($couplet) && is_array($couplet) && !empty($couplet['translator'])) {
+                                                    $u = @unserialize($couplet['translator']);
+                                                    if (is_array($u)) { foreach ($u as $v) { $preSelectedTranslators[] = (string)(int)$v; } }
+                                                    elseif (is_string($couplet['translator'])) {
+                                                        foreach (array_filter(array_map('trim', explode(',', $couplet['translator']))) as $v) {
+                                                            if (ctype_digit($v)) { $preSelectedTranslators[] = (string)(int)$v; }
+                                                        }
+                                                    }
+                                                }
+                                                $preSelectedTranslators = array_values(array_unique(array_filter($preSelectedTranslators, function($x){ return $x !== '' && $x !== '0'; })));
+                                            ?>
                                             <select class="form-control select2 col-md-4" multiple="multiple" name="translator[]" id="translator" data-placeholder="Select Translators">
-                                                <option value="">Select Translators</option>
-                                                <?php 
-                                                    foreach ($poets as $p) {
+                                                <?php
+                                                    foreach ($all_people_rows as $p) {
                                                         $parts = [];
                                                         if (!empty(trim($p->first_name))) { $parts[] = trim($p->first_name); }
                                                         if (!empty(trim($p->middle_name))) { $parts[] = trim($p->middle_name); }
@@ -745,13 +816,19 @@ if (!function_exists('couplet_parse_id_list')) {
                                                         $fullName = implode(' ', $parts);
                                                         if ($fullName === '') { $fullName = 'Unnamed'; }
                                                         $pid = (string)$p->id;
-                                                        echo '<option value="'.htmlspecialchars($pid).'">'.htmlspecialchars($fullName).'</option>';
+                                                        $sel = in_array($pid, $preSelectedTranslators, true) ? ' selected' : '';
+                                                        echo '<option value="'.htmlspecialchars($pid).'"'.$sel.'>'.htmlspecialchars($fullName).'</option>';
                                                     }
                                                 ?>
                                             </select>
+                                            <button type="button" class="btn btn-success btn-sm" id="addTranslatorBtn">Add New</button>
+                                            <button type="button" class="btn btn-primary btn-sm ml-1" id="editTranslatorBtn">Edit</button>
                                         </div>
                                         <div class="translation-control translation-editor-wrap">
                                             <textarea id="english_translation_text" name="english_translation_text" class="form-control"><?= isset($couplet['english_translation_text']) ? htmlspecialchars($couplet['english_translation_text']) : ''; ?></textarea>
+                                        </div>
+                                        <div class="translation-control">
+                                            <button type="button" class="btn btn-primary btn-sm" id="addCoupletTranslationBtn">Add Couplet Translation</button>
                                         </div>
                                         <div id="extraCoupletTranslations" class="mt-3"></div>
                                     </div>
@@ -783,6 +860,15 @@ if (!function_exists('couplet_parse_id_list')) {
                             <div class="col-12">
                                 <div class="form-group">
                                     <label>Audio File Upload</label>
+                                    <?php if (!empty($audio_file_url)): ?>
+                                        <div class="mb-2">
+                                            <audio controls style="max-width:100%;">
+                                                <source src="<?= htmlspecialchars($audio_file_url) ?>">
+                                                Your browser does not support the audio element.
+                                            </audio>
+                                            <div class="text-muted small">Current: <a href="<?= htmlspecialchars($audio_file_url) ?>" target="_blank"><?= htmlspecialchars(basename($audio_file_url)) ?></a></div>
+                                        </div>
+                                    <?php endif; ?>
                                     <input type="file" name="audio_file" class="form-control col-md-4" accept="audio/*">
                                 </div>
                             </div>
@@ -798,16 +884,13 @@ if (!function_exists('couplet_parse_id_list')) {
                                 $existingThumbnailUrl = trim((string) $couplet['thumbnail_url']);
                             }
                         }
-                        // Preview only: production public base for legacy DB paths like images/...
-                        $thumbnailPublicBase = 'https://ajabshahar.aaravega.in';
+                        // Preview: try local base first (works on dev), fall back to absolute URL if path already absolute
                         $thumbnailPreviewSrc = '';
                         if ($existingThumbnailUrl !== '') {
                             if (preg_match('#^https?://#i', $existingThumbnailUrl)) {
                                 $thumbnailPreviewSrc = $existingThumbnailUrl;
-                            } elseif (isset($existingThumbnailUrl[0]) && $existingThumbnailUrl[0] === '/') {
-                                $thumbnailPreviewSrc = rtrim($thumbnailPublicBase, '/') . $existingThumbnailUrl;
                             } else {
-                                $thumbnailPreviewSrc = rtrim($thumbnailPublicBase, '/') . '/' . ltrim($existingThumbnailUrl, '/');
+                                $thumbnailPreviewSrc = base_url(ltrim($existingThumbnailUrl, '/'));
                             }
                         }
                         ?>
@@ -871,12 +954,14 @@ if (!function_exists('couplet_parse_id_list')) {
                                 
                                 <div class="form-group"> 
                                     <?php
-                                    $keyword_rows = $this->db->query("SELECT id, word_transliteration FROM keywords")->result(); 
+                                    $keyword_rows = $this->db->table_exists('word')
+                                        ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) ASC, id ASC")->result()
+                                        : [];
                                     
                                     ?>
                                     <label>⊙ Keywords</label>
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="relatedkeywords[]" id="relatedkeywords">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" name="relatedkeywords[]" id="relatedkeywords" data-placeholder="Select keywords">
                                         <?php foreach ($keyword_rows as $keyword) :
                                             $keywordId = (string)$keyword->id;
                                             $isKeywordSelected = in_array($keywordId, $selected_related_keywords, true);
@@ -885,6 +970,7 @@ if (!function_exists('couplet_parse_id_list')) {
                                         <?php endforeach; ?>
                                         </select>
                                         <button type="button" class="btn btn-sm btn-success ml-2" id="addNewKeywordBtn" style="white-space:nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-primary ml-1" id="editKeywordBtn" style="white-space:nowrap;">Edit</button>
                                     </div>
                                 </div>
                             </div>
@@ -894,12 +980,22 @@ if (!function_exists('couplet_parse_id_list')) {
                             <div class="col-12">
                                 <div class="form-group">
                                     <?php
-                                    $song_rows = $this->db->query("SELECT id, umbrellaTitle FROM songs")->result();
+                                    if ($this->db->table_exists('songs')) {
+                                        $song_rows = $this->db->query("SELECT id, umbrellaTitle FROM songs ORDER BY LOWER(TRIM(umbrellaTitle)) ASC, id ASC")->result();
+                                    } else {
+                                        $song_rows = $this->db->query("
+                                            SELECT s.id,
+                                                COALESCE(NULLIF(TRIM(t.english_transliteration), ''), NULLIF(TRIM(t.original_title), ''), CONCAT('Song #', s.id)) AS umbrellaTitle
+                                            FROM song s
+                                            LEFT JOIN title t ON t.id = s.song_title_id
+                                            ORDER BY LOWER(TRIM(COALESCE(t.english_transliteration, t.original_title, ''))) ASC, s.id ASC
+                                        ")->result();
+                                    }
                                     
                                     ?>
                                     <label>⊙ Songs</label>
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="related_songs[]" id="related_songs">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" name="related_songs[]" id="related_songs" data-placeholder="Select songs">
                                         <?php foreach ($song_rows as $song_row) :
                                             $songId = (string)$song_row->id;
                                             $isSongSelected = in_array($songId, $selected_related_songs, true);
@@ -916,11 +1012,11 @@ if (!function_exists('couplet_parse_id_list')) {
                             <div class="col-12">
                                 <div class="form-group">
                                     <?php
-                                    $reflection_rows = $this->db->query("SELECT id, title FROM reflection ORDER BY id DESC")->result();
+                                    $reflection_rows = $this->db->query("SELECT id, title FROM reflection ORDER BY LOWER(TRIM(COALESCE(title, ''))) ASC, id ASC")->result();
                                     ?>
                                     <label>⊙ Reflections</label>
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="reflections[]" id="reflections">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" name="reflections[]" id="reflections" data-placeholder="Select reflections">
                                         <?php foreach ($reflection_rows as $reflection_row) :
                                             $rid = (string)$reflection_row->id;
                                             $isSelected = in_array($rid, (array)$selected_reflections, true);
@@ -938,11 +1034,16 @@ if (!function_exists('couplet_parse_id_list')) {
                         <div class="row">
                             <div class="col-12">
                                 <div class="form-group">
-                                    <?php  $poem_rows = $this->db->query("SELECT id, COALESCE(NULLIF(couplet_transliteration, ''), original_title) AS poem_label FROM couplet")->result();
-                                     ?>
+                                    <?php
+                                    $poem_rows = $this->db->query("
+                                        SELECT id, COALESCE(NULLIF(TRIM(couplet_transliteration), ''), NULLIF(TRIM(original_title), ''), CONCAT('Poem #', id)) AS poem_label
+                                        FROM couplet
+                                        ORDER BY LOWER(TRIM(COALESCE(NULLIF(couplet_transliteration, ''), NULLIF(original_title, ''), ''))) ASC, id ASC
+                                    ")->result();
+                                    ?>
                                     <label>⊙ Poems</label>
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="relatedpoems[]" id="relatedpoems">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" name="relatedpoems[]" id="relatedpoems" data-placeholder="Select poems">
                                         <?php foreach ($poem_rows as $poem_row) :
                                             $poemId = (string)$poem_row->id;
                                             $isPoemSelected = in_array($poemId, $selected_related_poems, true);
@@ -958,16 +1059,23 @@ if (!function_exists('couplet_parse_id_list')) {
                         <div class="row">
                             <div class="col-12">
                                 <div class="form-group">
-                                    <?php $person_rows = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person")->result();
-                                     ?>
+                                    <?php
+                                    // Same list + order as Poet / Attributed Poet (all people, A–Z).
+                                    $person_rows = $all_people_rows;
+                                    ?>
                                     <label>⊙ People</label>
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="related_people[]" id="related_people">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" name="related_people[]" id="related_people" data-placeholder="Select people">
                                         <?php foreach ($person_rows as $person_row) :
                                             $personId = (string)$person_row->id;
                                             $isPersonSelected = in_array($personId, $selected_related_people, true);
+                                            $pParts = [];
+                                            if (!empty(trim($person_row->first_name))) { $pParts[] = trim($person_row->first_name); }
+                                            if (!empty(trim($person_row->middle_name))) { $pParts[] = trim($person_row->middle_name); }
+                                            if (!empty(trim($person_row->last_name))) { $pParts[] = trim($person_row->last_name); }
+                                            $personLabel = $pParts !== [] ? implode(' ', $pParts) : 'Unnamed';
                                         ?>
-                                            <option value="<?= $person_row->id ?>" <?= $isPersonSelected ? 'selected' : '' ?>><?= htmlspecialchars($person_row->first_name . ' ' . $person_row->middle_name . ' ' . $person_row->last_name) ?></option>
+                                            <option value="<?= $person_row->id ?>" <?= $isPersonSelected ? 'selected' : '' ?>><?= htmlspecialchars($personLabel) ?></option>
                                         <?php endforeach; ?>
                                         </select>
                                     </div>
@@ -978,7 +1086,10 @@ if (!function_exists('couplet_parse_id_list')) {
                         <div class="row">
                             <div class="col-12">
                                 <div class="form-group">
-                                    <?php $film_rows = $this->db->query("SELECT id, COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title) AS film_label FROM film")->result();
+                                    <?php $film_rows = $this->db->query("
+                                        SELECT id, COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title) AS film_label FROM film
+                                        ORDER BY LOWER(TRIM(COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title, ''))) ASC, id ASC
+                                    ")->result();
                                      ?>
                                     <label>⊙ Films</label>
                                     <div style="display:flex;align-items:center;gap:8px;">
@@ -998,11 +1109,14 @@ if (!function_exists('couplet_parse_id_list')) {
                         <div class="row">
                             <div class="col-12">
                                 <div class="form-group">
-                                    <?php $episode_rows = $this->db->query("SELECT id, COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title) AS episode_label FROM film_episode")->result();
+                                    <?php $episode_rows = $this->db->query("
+                                        SELECT id, COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title) AS episode_label FROM film_episode
+                                        ORDER BY LOWER(TRIM(COALESCE(NULLIF(english_transliteration, ''), NULLIF(english_translation, ''), original_title, ''))) ASC, id ASC
+                                    ")->result();
                                      ?>
                                     <label>⊙ Film Episodes</label>
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="film_episodes[]" id="film_episodes">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" name="film_episodes[]" id="film_episodes" data-placeholder="Select episodes">
                                         <?php foreach ($episode_rows as $episode_row) :
                                             $episodeId = (string)$episode_row->id;
                                             $isEpisodeSelected = in_array($episodeId, $selected_related_film_episodes, true);
@@ -1020,7 +1134,15 @@ if (!function_exists('couplet_parse_id_list')) {
                                         </div>
                                         <div class="modal-body">
                                             <div class="form-group">
-                                                <label>Keyword Transliteration</label>
+                                                <label>Original</label>
+                                                <input type="text" id="newKeywordOriginal" class="form-control" placeholder="Enter Original Keyword">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Translation</label>
+                                                <input type="text" id="newKeywordTranslation" class="form-control" placeholder="Enter Keyword Translation">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Transliteration</label>
                                                 <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword Transliteration">
                                             </div>
                                         </div>
@@ -1517,10 +1639,18 @@ if (!function_exists('couplet_parse_id_list')) {
                             <div class="col-12">
                                 <div class="form-group">
                                 <label>Publish Status</label>
+                                <?php
+                                    // Normalize is_published — DB may store 1 / '1' / true / 'true' / 'yes'
+                                    $rawCpPublish = isset($couplet['is_published']) ? $couplet['is_published'] : '';
+                                    $cpPublishVal = 'false';
+                                    if ($rawCpPublish === 1 || $rawCpPublish === '1' || $rawCpPublish === true ||
+                                        (is_string($rawCpPublish) && in_array(strtolower($rawCpPublish), ['true','yes','y','1'], true))) {
+                                        $cpPublishVal = 'true';
+                                    }
+                                ?>
                                 <select name="is_published" class="form-control col-md-4">
-                                    <option value="false" <?= (!isset($couplet['is_published']) || $couplet['is_published'] == 'false') ? 'selected' : ''; ?>>No</option>
-                                    <option value="true" <?= isset($couplet['is_published']) && $couplet['is_published'] == 'true' ? 'selected' : ''; ?>>Yes</option>
-                                    
+                                    <option value="false" <?= $cpPublishVal === 'false' ? 'selected' : ''; ?>>No</option>
+                                    <option value="true"  <?= $cpPublishVal === 'true'  ? 'selected' : ''; ?>>Yes</option>
                                 </select>
                             </div>
                             </div>
@@ -1534,25 +1664,38 @@ if (!function_exists('couplet_parse_id_list')) {
                     <script>
                         jQuery(function ($) {
                         $(window).on('load', function () {
+                          // Helper to apply value + refresh Bootstrap Multiselect or Select2
+                          function applyEditSelect(sel, vals) {
+                            var $s = $(sel);
+                            if (!$s.length || !vals || !vals.length) return;
+                            $s.val(vals.map(String));
+                            if ($s.data('bs.multiselect') && $.fn.multiselect) {
+                              $s.multiselect('refresh');
+                            } else {
+                              $s.trigger('change');
+                            }
+                          }
+                          // Run after Bootstrap Multiselect has had time to attach (footer init runs on $(function))
+                          setTimeout(function () {
                         <?php if(isset($couplet)) { ?>
                             // Set values for edit (after footer loads Select2 / AdminLTE)
                             <?php
-                            $poets = isset($couplet['poet_id']) ? couplet_parse_id_list($couplet['poet_id']) : [];
-                            if (!empty($poets)) :
+                            $edit_poet_ids = isset($couplet['poet_id']) ? couplet_parse_id_list($couplet['poet_id']) : [];
+                            if (!empty($edit_poet_ids)) :
                             ?>
-                                $('#poet').val(<?php echo json_encode($poets); ?>).trigger('change');
+                                applyEditSelect('#poet', <?php echo json_encode($edit_poet_ids); ?>);
                             <?php endif; ?>
                             <?php
-                            $apoets = isset($couplet['attributed_poet']) ? couplet_parse_id_list($couplet['attributed_poet']) : [];
-                            if (!empty($apoets)) :
+                            $edit_attributed_poet_ids = isset($couplet['attributed_poet']) ? couplet_parse_id_list($couplet['attributed_poet']) : [];
+                            if (!empty($edit_attributed_poet_ids)) :
                             ?>
-                                $('#attributed_poet').val(<?php echo json_encode($apoets); ?>).trigger('change');
+                                applyEditSelect('#attributed_poet', <?php echo json_encode($edit_attributed_poet_ids); ?>);
                             <?php endif; ?>
                             <?php
                             $trans = isset($couplet['translator']) ? couplet_parse_id_list($couplet['translator']) : [];
                             if (!empty($trans)) :
                             ?>
-                                $('#translator').val(<?php echo json_encode($trans); ?>).trigger('change');
+                                applyEditSelect('#translator', <?php echo json_encode($trans); ?>);
                             <?php endif; ?>
                             <?php if(isset($couplet['soundCloud_track_url']) && $couplet['soundCloud_track_url']) { $urls = @unserialize($couplet['soundCloud_track_url']); if (!is_array($urls)) { $urls = []; } ?>
                                 // For soundcloud, add inputs
@@ -1565,25 +1708,42 @@ if (!function_exists('couplet_parse_id_list')) {
                                     container.appendChild(newInput);
                                 <?php } } ?>
                             <?php } ?>
-                            <?php if(isset($couplet['related_songs']) && $couplet['related_songs']) { $songs = unserialize($couplet['related_songs']); ?>
-                                $('select[name="related_songs[]"]').val(<?php echo json_encode($songs); ?>).trigger('change');
-                            <?php } ?>
-                            <?php if(isset($couplet['related_reflections']) && $couplet['related_reflections']) { $refs = unserialize($couplet['related_reflections']); ?>
-                                $('select[name="reflections[]"]').val(<?php echo json_encode($refs); ?>).trigger('change');
-                            <?php } ?>
-                            <?php if(isset($couplet['related_poems']) && $couplet['related_poems']) { $poems = unserialize($couplet['related_poems']); ?>
-                                $('select[name="relatedpoems[]"]').val(<?php echo json_encode($poems); ?>).trigger('change');
-                            <?php } ?>
-                            <?php if(isset($couplet['related_people']) && $couplet['related_people']) { $people = unserialize($couplet['related_people']); ?>
-                                $('select[name="related_people[]"]').val(<?php echo json_encode($people); ?>).trigger('change');
-                            <?php } ?>
-                            <?php if(isset($couplet['related_films']) && $couplet['related_films']) { $films = unserialize($couplet['related_films']); ?>
-                                $('select[name="films[]"]').val(<?php echo json_encode($films); ?>).trigger('change');
-                            <?php } ?>
-                            <?php if(isset($couplet['related_film_episodes']) && $couplet['related_film_episodes']) { $episodes = unserialize($couplet['related_film_episodes']); ?>
-                                $('select[name="film_episodes[]"]').val(<?php echo json_encode($episodes); ?>).trigger('change');
-                            <?php } ?>
+                            <?php
+                                // Helper: apply selected values to a select and refresh Bootstrap Multiselect if attached
+                                $applyMultiSelect = function ($selector, $rawValue) {
+                                    if (empty($rawValue)) return '';
+                                    $vals = @unserialize($rawValue);
+                                    if (!is_array($vals)) {
+                                        $vals = array_values(array_filter(array_map('trim', explode(',', (string)$rawValue))));
+                                    }
+                                    if (empty($vals)) return '';
+                                    return "(function(){ var \$s = $('" . $selector . "'); if(!\$s.length) return; \$s.val(" . json_encode(array_map('strval', $vals)) . "); if(\$s.data('bs.multiselect') && $.fn.multiselect){ \$s.multiselect('refresh'); } else { \$s.trigger('change'); } })();\n";
+                                };
+                                if (isset($couplet['related_songs'])) echo $applyMultiSelect('select[name="related_songs[]"]', $couplet['related_songs']);
+                                if (isset($couplet['related_reflections'])) echo $applyMultiSelect('select[name="related_reflections[]"]', $couplet['related_reflections']);
+                                if (isset($couplet['related_poems'])) echo $applyMultiSelect('select[name="related_poems[]"]', $couplet['related_poems']);
+                                if (isset($couplet['related_people'])) echo $applyMultiSelect('select[name="related_people[]"]', $couplet['related_people']);
+                                if (isset($couplet['related_films'])) echo $applyMultiSelect('select[name="related_films[]"]', $couplet['related_films']);
+                                if (isset($couplet['related_film_episodes'])) echo $applyMultiSelect('select[name="related_film_episodes[]"]', $couplet['related_film_episodes']);
+                                if (isset($couplet['translator'])) echo $applyMultiSelect('select[name="translator[]"]', $couplet['translator']);
+                                if (isset($couplet['attributed_poet'])) echo $applyMultiSelect('select[name="attributed_poet[]"]', $couplet['attributed_poet']);
+                                // Keywords stored as CSV in `keywords` column → relatedkeywords[] select
+                                if (!empty($couplet['keywords'])) {
+                                    $kwIds = array_values(array_filter(array_map('trim', explode(',', (string)$couplet['keywords']))));
+                                    if (!empty($kwIds)) {
+                                        echo "(function(){ var \$s = $('select[name=\"relatedkeywords[]\"]'); if(!\$s.length) return; \$s.val(" . json_encode($kwIds) . "); if(\$s.data('bs.multiselect') && $.fn.multiselect){ \$s.multiselect('refresh'); } else { \$s.trigger('change'); } })();\n";
+                                    }
+                                }
+                                // Poet (single value in poet_id INT) → poet[] select
+                                if (!empty($couplet['poet_id'])) {
+                                    $pid = (int) $couplet['poet_id'];
+                                    if ($pid > 0) {
+                                        echo "(function(){ var \$s = $('select[name=\"poet[]\"]'); if(!\$s.length) return; \$s.val(['" . $pid . "']); if(\$s.data('bs.multiselect') && $.fn.multiselect){ \$s.multiselect('refresh'); } else { \$s.trigger('change'); } })();\n";
+                                    }
+                                }
+                            ?>
                         <?php } ?>
+                          }, 800); // end setTimeout
                         });
                         });
                     </script>
@@ -1754,21 +1914,39 @@ if (!function_exists('couplet_parse_id_list')) {
                         }, 500);
                         </script>
                         <script>
-                        $(function() {
-                            $('.select2').select2();
-                        });
+                        window.coupletInitSelect2 = function ($el) {
+                            $el = window.jQuery($el);
+                            if (!$el.length || typeof $el.select2 !== 'function') return;
+                            var ph = $el.attr('data-placeholder') || 'Search or select…';
+                            $el.select2({
+                                theme: 'bootstrap4',
+                                width: '100%',
+                                placeholder: ph,
+                                allowClear: true,
+                                minimumResultsForSearch: 0,
+                                closeOnSelect: false
+                            });
+                            $el.on('select2:open.coupletph', function () {
+                                var searchPh = 'Search…';
+                                setTimeout(function () {
+                                    var $f = window.jQuery('.select2-container--open .select2-search__field');
+                                    if ($f.length) $f.attr('placeholder', searchPh);
+                                }, 0);
+                            });
+                        };
+                        // Select2 is finalized after inc/footer.php (AdminLTE also calls $('.select2').select2()).
                         </script>
                         <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 document.getElementById('coupletForm').addEventListener('submit', function(e) {
     e.preventDefault(); // Prevent form submission
 
+    // Only fields marked with red `*` in the form are required.
     const fields = [
         { id: 'couplet_transliteration', name: 'Poem Title - Transliteration' },
-        { id: 'couplet_translation', name: 'Poem Title - Translation' },
-        { id: 'poet', name: 'Poet' },
-        { id: 'thumbnailUrl', name: 'Thumbnail Image Upload' },
-        { id: 'is_published', name: 'Publish Status' }
+        { id: 'couplet_translation',     name: 'Poem Title - Translation' },
+        { id: 'poet',                    name: 'Poet' },
+        { id: 'thumbnailUrl',            name: 'Thumbnail Image Upload' }
     ];
 
     for (let field of fields) {
@@ -2071,8 +2249,8 @@ document.getElementById('addAttributedPoet').addEventListener('click', function(
 
         container.appendChild(wrapper);
 
-        if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
-            window.jQuery('#' + selectId).select2();
+        if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2 && window.coupletInitSelect2) {
+            window.coupletInitSelect2(window.jQuery('#' + selectId));
         }
 
         if (typeof CKEDITOR !== 'undefined') {
@@ -2127,4 +2305,53 @@ document.getElementById('addAttributedPoet').addEventListener('click', function(
     }
 })();
 </script>
+<script>
+(function () {
+  function bindEdit(btnId, opts) {
+    var b = document.getElementById(btnId);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      if (window.__adminEditOption) window.__adminEditOption(opts);
+      else alert('Edit helper not loaded');
+    });
+  }
+  var BASE = '<?php echo base_url(); ?>';
+  bindEdit('editPoetBtn', {
+    selectId: '#poet', modalId: '#addPoetModal', addSaveBtnId: '#addPoet',
+    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Poet',
+    extraPayload: { type_id: 2 },
+    fields: [{ inputId: '#addPoetName', postKey: 'name', primary: true }]
+  });
+  bindEdit('editAttributedPoetBtn', {
+    selectId: '#attributed_poet', modalId: '#addAttributedPoetModal', addSaveBtnId: '#addAttributedPoet',
+    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Attributed Poet',
+    extraPayload: { type_id: 2 },
+    fields: [{ inputId: '#addAttributedPoetName', postKey: 'name', primary: true }]
+  });
+  bindEdit('editTranslatorBtn', {
+    selectId: '#translator', modalId: '#addTranslatorModal', addSaveBtnId: '#addTranslator',
+    updateUrl: BASE + 'song/ajax_update_translator', editTitle: 'Edit Translator',
+    fields: [{ inputId: '#addTranslatorName', postKey: 'name', primary: true }]
+  });
+  bindEdit('editKeywordBtn', {
+    selectId: '#relatedkeywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#addKeywordConfirm',
+    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
+    fields: [{ inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }]
+  });
+})();
+</script>
 <?php include('inc/footer.php'); ?>
+<script>
+jQuery(function ($) {
+    if (typeof window.coupletInitSelect2 !== 'function') return;
+    $('#coupletForm select.select2').each(function () {
+        var $el = $(this);
+        try {
+            if ($el.data('select2')) {
+                $el.select2('destroy');
+            }
+        } catch (e) { /* ignore */ }
+        window.coupletInitSelect2($el);
+    });
+});
+</script>

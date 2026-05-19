@@ -1,0 +1,10 @@
+[2026-05-07 11:36:47] couplet update id=307
+POST keys: couplet_transliteration,couplet_translation,original_title,poet,original_text,english_transliteration_text,translator,english_translation_text,note_text,glossary,thumbnailUrl_existing,thumbnail_excerpt,relatedkeywords,related_songs,related_people,meta_title,meta_keywords,meta_description,is_published
+POST[thumbnailUrl_existing]='uploads/thumbnails/1778144476_WhatsApp_Image_2026-04-15_at_3_38_35_PM.jpeg'
+FILES[thumbnailUrl][name]='hqdefault (1).avif'
+---
+[2026-05-07 11:39:38] couplet update id=307
+POST keys: couplet_transliteration,couplet_translation,original_title,poet,original_text,english_transliteration_text,translator,english_translation_text,note_text,glossary,thumbnailUrl_existing,thumbnail_excerpt,relatedkeywords,related_songs,related_people,meta_title,meta_keywords,meta_description,is_published
+POST[thumbnailUrl_existing]='uploads/thumbnails/1778144476_WhatsApp_Image_2026-04-15_at_3_38_35_PM.jpeg'
+FILES[thumbnailUrl][name]='hqdefault (1).avif'
+---

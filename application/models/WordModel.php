@@ -29,4 +29,47 @@ class WordModel extends CI_Model {
         $this->db->where('id', $id);
         return $this->db->delete('word');
     }
+
+    /**
+     * Related-keywords selects store word.id. Match or create a row in `word` by transliteration.
+     *
+     * @return array{id: int|string, word_transliteration: string}|null
+     */
+    public function get_or_create_word_keyword($word) {
+        $word = trim((string) $word);
+        if ($word === '' || !$this->db->table_exists('word')) {
+            return null;
+        }
+        $low = strtolower($word);
+        $existing = $this->db->query(
+            'SELECT id, word_transliteration FROM word WHERE LOWER(TRIM(COALESCE(word_transliteration, \'\'))) = ? LIMIT 1',
+            [$low]
+        )->row_array();
+        if (!empty($existing)) {
+            $label = isset($existing['word_transliteration']) ? trim((string) $existing['word_transliteration']) : '';
+            if ($label === '') {
+                $label = $word;
+            }
+
+            return [
+                'id' => $existing['id'],
+                'word_transliteration' => $label,
+            ];
+        }
+        $insert = ['word_transliteration' => $word];
+        if ($this->db->field_exists('word_original', 'word')) {
+            $insert['word_original'] = $word;
+        }
+        if ($this->db->field_exists('is_this_keyword', 'word')) {
+            $insert['is_this_keyword'] = 1;
+        }
+        if (!$this->db->insert('word', $insert)) {
+            return null;
+        }
+
+        return [
+            'id' => $this->db->insert_id(),
+            'word_transliteration' => $word,
+        ];
+    }
 }

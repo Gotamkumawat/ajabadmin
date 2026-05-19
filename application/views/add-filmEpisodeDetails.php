@@ -19,17 +19,18 @@ $selected_related_poems = isset($filmEpisode->related_poems) ? $readSelectedValu
 $selected_related_reflections = isset($filmEpisode->related_reflections) ? $readSelectedValues($filmEpisode->related_reflections) : [];
 $selected_related_people = isset($filmEpisode->related_people) ? $readSelectedValues($filmEpisode->related_people) : [];
 
-$keyword_rows = $this->db->query("SELECT id, word_transliteration FROM keywords ORDER BY id DESC")->result();
+$keyword_rows = $this->db->table_exists('word')
+    ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) DESC, id DESC")->result()
+    : [];
 $song_rows = $this->db->query("SELECT id, umbrellaTitle FROM songs ORDER BY id DESC")->result();
 $poem_rows = $this->db->query("SELECT id, COALESCE(NULLIF(couplet_transliteration, ''), original_title) AS poem_label FROM couplet ORDER BY id DESC")->result();
 $reflection_rows = $this->db->query("SELECT id, title FROM reflection ORDER BY id DESC")->result();
 $person_rows = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person ORDER BY id DESC")->result();
+// All films from the canonical `film` table (same source as filmDetails-list)
 $film_id_rows = $this->db->query("
-    SELECT DISTINCT fe.film_id, f.english_transliteration, f.english_translation, f.original_title
-    FROM film_episode fe
-    LEFT JOIN film f ON f.id = fe.film_id
-    WHERE fe.film_id IS NOT NULL AND fe.film_id != ''
-    ORDER BY fe.film_id ASC
+    SELECT id AS film_id, english_transliteration, english_translation, original_title
+    FROM film
+    ORDER BY LOWER(TRIM(COALESCE(english_transliteration, english_translation, original_title, ''))) ASC, id ASC
 ")->result();
 
 $thumbRaw = isset($filmEpisode->thumbnail_image_upload) ? trim((string)$filmEpisode->thumbnail_image_upload) : '';
@@ -152,7 +153,16 @@ if ($thumbRaw !== '') {
                             <div class="col-md-4">
                                         <select name="main_title" id="main_title_ep" class="form-control" required>
                                             <option value="">Select Main Film</option>
-                                    <?php $mainVal = isset($filmEpisode) ? (string)$filmEpisode->main_title : ''; ?>
+                                    <?php
+                                        $mainVal = '';
+                                        if (isset($filmEpisode)) {
+                                            if (isset($filmEpisode->film_id) && (int)$filmEpisode->film_id > 0) {
+                                                $mainVal = (string)(int)$filmEpisode->film_id;
+                                            } elseif (isset($filmEpisode->main_title) && $filmEpisode->main_title !== '') {
+                                                $mainVal = (string)$filmEpisode->main_title;
+                                            }
+                                        }
+                                    ?>
                                     <?php foreach ($film_id_rows as $r): ?>
                                         <?php $idVal = isset($r->film_id) ? (string)$r->film_id : ''; if ($idVal === '') continue; ?>
                                             <?php 
@@ -241,6 +251,7 @@ if ($thumbRaw !== '') {
                                                 <?php endforeach; ?>
                                             </select>
                                     <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtn">Add New</button>
+                                    <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtn">Edit</button>
                                 </div>
                             </div>
                             <div class="form-group row align-items-center">
@@ -286,13 +297,44 @@ if ($thumbRaw !== '') {
                                     </div>
                                 </div>
 
+                        <label><strong>Meta Data</strong></label>
+                        <div style="padding-left:20px;">
+                            <div class="form-group row align-items-center">
+                                <label class="col-md-2 col-form-label">⊙ Meta Title</label>
+                                <div class="col-md-4">
+                                    <input type="text" name="meta_title" class="form-control" placeholder="Enter Meta Title"
+                                           value="<?php echo isset($filmEpisode->meta_title) ? htmlspecialchars($filmEpisode->meta_title) : ''; ?>">
+                                </div>
+                            </div>
+                            <div class="form-group row align-items-center">
+                                <label class="col-md-2 col-form-label">⊙ Meta Keywords</label>
+                                <div class="col-md-4">
+                                    <input type="text" name="meta_keywords" class="form-control" placeholder="Enter Meta Keywords"
+                                           value="<?php echo isset($filmEpisode) ? htmlspecialchars(isset($filmEpisode->meta_keywords) ? $filmEpisode->meta_keywords : (isset($filmEpisode->meta_keyword) ? $filmEpisode->meta_keyword : '')) : ''; ?>">
+                                </div>
+                            </div>
+                            <div class="form-group row align-items-center">
+                                <label class="col-md-2 col-form-label">⊙ Meta Description</label>
+                                <div class="col-md-4">
+                                    <textarea name="meta_description" class="form-control" rows="3" placeholder="Enter Meta Description"><?php echo isset($filmEpisode->meta_description) ? htmlspecialchars($filmEpisode->meta_description) : ''; ?></textarea>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">Publish Status</label>
                             <div class="col-md-4">
+                                        <?php
+                                            $rawEpPub = isset($filmEpisode->publish) ? $filmEpisode->publish : '';
+                                            $epPubVal = 'false';
+                                            if ($rawEpPub === 1 || $rawEpPub === '1' || $rawEpPub === true ||
+                                                (is_string($rawEpPub) && in_array(strtolower($rawEpPub), ['true','yes','y','1'], true))) {
+                                                $epPubVal = 'true';
+                                            }
+                                        ?>
                                         <select name="publish" class="form-control">
-                                    <?php $pub = isset($filmEpisode) ? strtolower((string)$filmEpisode->publish) : ''; ?>
-                                    <option value="false" <?php echo ($pub === 'false' || $pub === '0' || $pub === '') ? 'selected' : ''; ?>>No</option>
-                                    <option value="true" <?php echo ($pub === 'true' || $pub === '1') ? 'selected' : ''; ?>>Yes</option>
+                                            <option value="false" <?php echo $epPubVal === 'false' ? 'selected' : ''; ?>>No</option>
+                                            <option value="true"  <?php echo $epPubVal === 'true'  ? 'selected' : ''; ?>>Yes</option>
                                         </select>
                             </div>
                         </div>
@@ -359,15 +401,39 @@ $(document).ready(function() {
     $('#addNewKeywordBtn').on('click', function() {
             Swal.fire({
             title: 'Add New Keyword',
-            input: 'text',
-            inputPlaceholder: 'Enter keyword',
-            showCancelButton: true
+            html: `
+                <div class="form-group">
+                    <label>Original</label>
+                    <input id="swal-original" class="swal2-input" placeholder="Enter Original Keyword">
+                </div>
+                <div class="form-group">
+                    <label>Translation</label>
+                    <input id="swal-translation" class="swal2-input" placeholder="Enter Keyword Translation">
+                </div>
+                <div class="form-group">
+                    <label>Transliteration</label>
+                    <input id="swal-transliteration" class="swal2-input" placeholder="Enter Keyword Transliteration">
+                </div>
+            `,
+            showCancelButton: true,
+            preConfirm: () => {
+                const original = document.getElementById('swal-original').value;
+                const translation = document.getElementById('swal-translation').value;
+                const transliteration = document.getElementById('swal-transliteration').value;
+                if (!transliteration) {
+                    Swal.showValidationMessage('Transliteration is required');
+                    return false;
+                }
+                return { original, translation, transliteration };
+            }
         }).then(async (result) => {
-            if (!result.isConfirmed || !result.value) return;
+            if (!result.isConfirmed) return;
             const res = await fetch('<?= base_url('SongController/ajax_create_keyword') ?>', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'word_transliteration=' + encodeURIComponent(result.value.trim())
+                body: 'word_transliteration=' + encodeURIComponent(result.value.transliteration.trim()) + 
+                       '&word_original=' + encodeURIComponent(result.value.original.trim()) + 
+                       '&word_translation=' + encodeURIComponent(result.value.translation.trim())
             });
             const data = await res.json();
             if (data && data.status === 'success') {
@@ -395,4 +461,45 @@ $(document).ready(function() {
 });
 </script>
 
+<script>
+(function () {
+  var b = document.getElementById('editKeywordBtn');
+  if (!b) return;
+  b.addEventListener('click', function () {
+    var $sel = $('#related_keywords');
+    var vals = $sel.val() || [];
+    if (!Array.isArray(vals)) vals = [vals];
+    vals = vals.filter(function(v){ return v; });
+    if (vals.length !== 1) {
+      Swal.fire({ icon: 'info', title: 'Pick one', text: 'Please select exactly one keyword to edit.' });
+      return;
+    }
+    var id = String(vals[0]);
+    var $opt = $sel.find('option[value="' + id.replace(/(["\\])/g,'\\$1') + '"]');
+    var current = $.trim($opt.text());
+    Swal.fire({
+      title: 'Edit Keyword',
+      html: '<div class="form-group"><label>Transliteration</label><input id="swal-edit-translit" class="swal2-input" placeholder="Enter Keyword Transliteration"></div>',
+      didOpen: function() { document.getElementById('swal-edit-translit').value = current; },
+      showCancelButton: true, confirmButtonText: 'Update',
+      preConfirm: function() {
+        var t = document.getElementById('swal-edit-translit').value.trim();
+        if (!t) { Swal.showValidationMessage('Transliteration is required'); return false; }
+        return t;
+      }
+    }).then(function(res){
+      if (!res.isConfirmed) return;
+      $.post('<?php echo base_url("song/ajax_update_keyword"); ?>', { id: id, word_transliteration: res.value }, function(resp){
+        if (resp && (resp.success === true || resp.status === 'success')) {
+          $opt.text(resp.word_transliteration || res.value);
+          window.__adminRefreshSelect($sel, id);
+          Swal.fire({ icon:'success', title:'Updated', timer:1100, showConfirmButton:false });
+        } else {
+          Swal.fire({ icon:'error', title:'Error', text:(resp && resp.message) || 'Update failed' });
+        }
+      }, 'json').fail(function(){ Swal.fire({ icon:'error', title:'Network error' }); });
+    });
+  });
+})();
+</script>
 <?php include('inc/footer.php'); ?>

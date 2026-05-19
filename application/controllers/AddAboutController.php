@@ -17,28 +17,203 @@ class AddAboutController extends CI_Controller {
     }
 
     private function mapAjabTypeToInt($typeLabel) {
+        $this->_ensure_ajab_menus_table();
         $normalized = strtolower(trim((string)$typeLabel));
-        $map = [
-            'intro' => 1,
-            'translit guide' => 2,
-            'copyrights' => 3
+        if ($normalized === '') return null;
+        $row = $this->db->select('id')->where('LOWER(slug)', $normalized)->get('ajab_menus')->row();
+        return $row ? (int)$row->id : null;
+    }
+
+    private function _ensure_ajab_menus_table() {
+        if ($this->db->table_exists('ajab_menus')) return;
+        $sql = "CREATE TABLE IF NOT EXISTS `ajab_menus` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `slug` VARCHAR(100) NOT NULL,
+            `label` VARCHAR(150) NOT NULL,
+            `sort_order` INT(11) NOT NULL DEFAULT 0,
+            `created_at` DATETIME NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `slug` (`slug`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+        $this->db->query($sql);
+        $seed = [
+            ['slug' => 'intro',          'label' => 'Intro',          'sort_order' => 1],
+            ['slug' => 'translit guide', 'label' => 'Translit Guide', 'sort_order' => 2],
+            ['slug' => 'copyrights',     'label' => 'Copyrights',     'sort_order' => 3],
         ];
-        return isset($map[$normalized]) ? $map[$normalized] : null;
+        foreach ($seed as $r) {
+            $r['created_at'] = date('Y-m-d H:i:s');
+            $this->db->insert('ajab_menus', $r);
+        }
+    }
+
+    public function get_ajab_menus() {
+        $this->_ensure_ajab_menus_table();
+        header('Content-Type: application/json; charset=utf-8');
+        $rows = $this->db->order_by('sort_order', 'ASC')->order_by('id', 'ASC')->get('ajab_menus')->result();
+        echo json_encode(['status' => true, 'data' => $rows]);
+    }
+
+    public function create_ajab_menu() {
+        $this->_ensure_ajab_menus_table();
+        header('Content-Type: application/json; charset=utf-8');
+        $label = trim((string)$this->input->post('label', true));
+        if ($label === '') {
+            echo json_encode(['status' => false, 'message' => 'Label is required']); return;
+        }
+        $slug = strtolower(preg_replace('/\s+/', ' ', trim($label)));
+        $exists = $this->db->where('LOWER(slug)', $slug)->get('ajab_menus')->row();
+        if ($exists) {
+            echo json_encode(['status' => false, 'message' => 'Menu already exists', 'data' => $exists]); return;
+        }
+        $maxRow = $this->db->select_max('sort_order', 'maxOrder')->get('ajab_menus')->row();
+        $next = ($maxRow && $maxRow->maxOrder !== null) ? ((int)$maxRow->maxOrder + 1) : 1;
+        $data = [
+            'slug' => $slug,
+            'label' => $label,
+            'sort_order' => $next,
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+        if ($this->db->insert('ajab_menus', $data)) {
+            $data['id'] = (int)$this->db->insert_id();
+            echo json_encode(['status' => true, 'data' => $data]);
+        } else {
+            $err = $this->db->error();
+            echo json_encode(['status' => false, 'message' => !empty($err['message']) ? $err['message'] : 'Insert failed']);
+        }
+    }
+
+    public function delete_ajab_menu($id) {
+        $this->_ensure_ajab_menus_table();
+        header('Content-Type: application/json; charset=utf-8');
+        $id = (int)$id;
+        if ($id <= 0) { echo json_encode(['status' => false, 'message' => 'Invalid id']); return; }
+        $used = $this->db->where('ajab_type', $id)->where('status', 0)->count_all_results('about');
+        if ($used > 0) {
+            echo json_encode(['status' => false, 'message' => 'Cannot delete: menu has saved content. Remove content first.']);
+            return;
+        }
+        $this->db->where('id', $id)->delete('ajab_menus');
+        echo json_encode(['status' => true]);
     }
 
     private function mapKabirTypeToInt($typeLabel) {
+        $this->_ensure_kabir_menus_table();
         $normalized = strtolower(trim((string)$typeLabel));
-        $map = [
-            'intro' => 1,
-            'team' => 2,
-            'films' => 3,
-            'books' => 4,
-            'shabad shaala' => 5
+        if ($normalized === '') return null;
+        $row = $this->db->select('id')->where('LOWER(slug)', $normalized)->get('kabir_menus')->row();
+        return $row ? (int)$row->id : null;
+    }
+
+    private function _ensure_kabir_menus_table() {
+        if ($this->db->table_exists('kabir_menus')) return;
+        $sql = "CREATE TABLE IF NOT EXISTS `kabir_menus` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `slug` VARCHAR(100) NOT NULL,
+            `label` VARCHAR(150) NOT NULL,
+            `sort_order` INT(11) NOT NULL DEFAULT 0,
+            `created_at` DATETIME NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `slug` (`slug`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+        $this->db->query($sql);
+        $seed = [
+            ['slug' => 'intro',         'label' => 'Intro',         'sort_order' => 1],
+            ['slug' => 'team',          'label' => 'Team',          'sort_order' => 2],
+            ['slug' => 'films',         'label' => 'Films',         'sort_order' => 3],
+            ['slug' => 'books',         'label' => 'Books',         'sort_order' => 4],
+            ['slug' => 'shabad shaala', 'label' => 'Shabad Shaala', 'sort_order' => 5],
         ];
-        return isset($map[$normalized]) ? $map[$normalized] : null;
+        foreach ($seed as $r) {
+            $r['created_at'] = date('Y-m-d H:i:s');
+            $this->db->insert('kabir_menus', $r);
+        }
+    }
+
+    public function get_kabir_menus() {
+        $this->_ensure_kabir_menus_table();
+        header('Content-Type: application/json; charset=utf-8');
+        $rows = $this->db->order_by('sort_order', 'ASC')->order_by('id', 'ASC')->get('kabir_menus')->result();
+        echo json_encode(['status' => true, 'data' => $rows]);
+    }
+
+    public function create_kabir_menu() {
+        $this->_ensure_kabir_menus_table();
+        header('Content-Type: application/json; charset=utf-8');
+        $label = trim((string)$this->input->post('label', true));
+        if ($label === '') {
+            echo json_encode(['status' => false, 'message' => 'Label is required']); return;
+        }
+        $slug = strtolower(preg_replace('/\s+/', ' ', trim($label)));
+        $exists = $this->db->where('LOWER(slug)', $slug)->get('kabir_menus')->row();
+        if ($exists) {
+            echo json_encode(['status' => false, 'message' => 'Menu already exists', 'data' => $exists]); return;
+        }
+        $maxRow = $this->db->select_max('sort_order', 'maxOrder')->get('kabir_menus')->row();
+        $next = ($maxRow && $maxRow->maxOrder !== null) ? ((int)$maxRow->maxOrder + 1) : 1;
+        $data = [
+            'slug' => $slug,
+            'label' => $label,
+            'sort_order' => $next,
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+        if ($this->db->insert('kabir_menus', $data)) {
+            $data['id'] = (int)$this->db->insert_id();
+            echo json_encode(['status' => true, 'data' => $data]);
+        } else {
+            $err = $this->db->error();
+            echo json_encode(['status' => false, 'message' => !empty($err['message']) ? $err['message'] : 'Insert failed']);
+        }
+    }
+
+    public function delete_kabir_menu($id) {
+        $this->_ensure_kabir_menus_table();
+        header('Content-Type: application/json; charset=utf-8');
+        $id = (int)$id;
+        if ($id <= 0) { echo json_encode(['status' => false, 'message' => 'Invalid id']); return; }
+        // Block deletion if any kabir content rows reference this menu
+        $used = $this->db->where('kabir_type', $id)->where('status', 1)->count_all_results('about');
+        if ($used > 0) {
+            echo json_encode(['status' => false, 'message' => 'Cannot delete: menu has saved content. Remove content first.']);
+            return;
+        }
+        $this->db->where('id', $id)->delete('kabir_menus');
+        echo json_encode(['status' => true]);
+    }
+
+    private function _handle_menu_image_upload($redirectOnError = 'ajab-shahar') {
+        // Upload new file if present, else return existing path from POST
+        if (!empty($_FILES['menu_image']['name'])) {
+            $dir = FCPATH . 'images/';
+            if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+            $this->load->library('upload');
+            $cfg = [
+                'upload_path'   => $dir,
+                'allowed_types' => 'jpg|jpeg|png|gif|webp|avif|svg',
+                'max_size'      => 4096,
+                'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['menu_image']['name']),
+            ];
+            $this->upload->initialize($cfg);
+            if ($this->upload->do_upload('menu_image')) {
+                $up = $this->upload->data();
+                return 'images/' . $up['file_name'];
+            }
+            $this->session->set_flashdata('error', $this->upload->display_errors());
+            redirect($redirectOnError);
+            exit;
+        }
+        $existing = $this->input->post('menu_image_existing');
+        return ($existing !== null && $existing !== '') ? trim((string)$existing) : '';
     }
 
     public function save_ajab_shahar() {
+        @file_put_contents(FCPATH . 'about_debug.log',
+            "[".date('Y-m-d H:i:s')."] save_ajab_shahar POST keys: ".implode(',', array_keys($_POST))."\n"
+            ."POST[meta_title]=".(isset($_POST['meta_title'])?var_export($_POST['meta_title'],true):'(unset)')."\n"
+            ."POST[meta_keywords]=".(isset($_POST['meta_keywords'])?var_export($_POST['meta_keywords'],true):'(unset)')."\n"
+            ."POST[meta_description]=".(isset($_POST['meta_description'])?var_export(substr((string)$_POST['meta_description'],0,200),true):'(unset)')."\n"
+            ."POST[visual_content]=".(isset($_POST['visual_content'])?'(present, len='.strlen((string)$_POST['visual_content']).')':'(unset)')."\n"
+            ."---\n", FILE_APPEND);
         if (!$this->db->table_exists('about')) {
             $this->session->set_flashdata('error', 'about table not found.');
             redirect('ajab-shahar');
@@ -47,7 +222,11 @@ class AddAboutController extends CI_Controller {
 
         $typeLabel = $this->input->post('type', true);
         $typeValue = $this->mapAjabTypeToInt($typeLabel);
-        $visualContent = $this->input->post('meta_description', false);
+        // Visual content from canonical field (legacy fallback to meta_description for old forms)
+        $visualContent = $this->input->post('visual_content', false);
+        if ($visualContent === null || trim((string)$visualContent) === '') {
+            $visualContent = $this->input->post('meta_description', false);
+        }
 
         if ($typeValue === null) {
             $this->session->set_flashdata('error', 'Invalid type selected.');
@@ -61,15 +240,25 @@ class AddAboutController extends CI_Controller {
             return;
         }
 
+        $menuImage = $this->_handle_menu_image_upload('ajab-shahar');
+
         $data = [
             'ajab_type' => $typeValue,
             'visual_content' => $visualContent,
+            'meta_title' => $this->input->post('meta_title') ?? '',
+            'meta_keywords' => $this->input->post('meta_keywords') ?? '',
+            'meta_description' => $this->input->post('meta_description') ?? '',
+            'menu_image' => $menuImage,
             'status' => 0,
             'created_at' => date('Y-m-d H:i:s')
         ];
 
         $insert = $this->db->insert('about', $data);
         if ($insert) {
+            // Logo is shared across all Ajab Shahar tabs — propagate to all status=0 rows
+            if ($menuImage !== '') {
+                $this->db->where('status', 0)->update('about', ['menu_image' => $menuImage]);
+            }
             $this->session->set_flashdata('success', 'Ajab Shahar content saved successfully!');
         } else {
             $dbError = $this->db->error();
@@ -81,6 +270,13 @@ class AddAboutController extends CI_Controller {
     }
 
     public function update_ajab_shahar($id) {
+        @file_put_contents(FCPATH . 'about_debug.log',
+            "[".date('Y-m-d H:i:s')."] update_ajab_shahar id=$id POST keys: ".implode(',', array_keys($_POST))."\n"
+            ."POST[meta_title]=".(isset($_POST['meta_title'])?var_export($_POST['meta_title'],true):'(unset)')."\n"
+            ."POST[meta_keywords]=".(isset($_POST['meta_keywords'])?var_export($_POST['meta_keywords'],true):'(unset)')."\n"
+            ."POST[meta_description]=".(isset($_POST['meta_description'])?var_export(substr((string)$_POST['meta_description'],0,200),true):'(unset)')."\n"
+            ."POST[visual_content]=".(isset($_POST['visual_content'])?'(present, len='.strlen((string)$_POST['visual_content']).')':'(unset)')."\n"
+            ."---\n", FILE_APPEND);
         if (!$this->db->table_exists('about')) {
             $this->session->set_flashdata('error', 'about table not found.');
             redirect('ajab-shahar');
@@ -95,7 +291,11 @@ class AddAboutController extends CI_Controller {
 
         $typeLabel = $this->input->post('type', true);
         $typeValue = $this->mapAjabTypeToInt($typeLabel);
-        $visualContent = $this->input->post('meta_description', false);
+        // Visual content from canonical field (legacy fallback to meta_description for old forms)
+        $visualContent = $this->input->post('visual_content', false);
+        if ($visualContent === null || trim((string)$visualContent) === '') {
+            $visualContent = $this->input->post('meta_description', false);
+        }
 
         if ($typeValue === null) {
             $this->session->set_flashdata('error', 'Invalid type selected.');
@@ -109,9 +309,15 @@ class AddAboutController extends CI_Controller {
             return;
         }
 
+        $menuImage = $this->_handle_menu_image_upload('ajab-shahar');
+
         $data = [
             'ajab_type' => $typeValue,
             'visual_content' => $visualContent,
+            'meta_title' => $this->input->post('meta_title') ?? '',
+            'meta_keywords' => $this->input->post('meta_keywords') ?? '',
+            'meta_description' => $this->input->post('meta_description') ?? '',
+            'menu_image' => $menuImage,
             'status' => 0
         ];
 
@@ -120,6 +326,10 @@ class AddAboutController extends CI_Controller {
         $update = $this->db->update('about', $data);
 
         if ($update) {
+            // Logo is shared across all Ajab Shahar tabs — propagate to all status=0 rows
+            if ($menuImage !== '') {
+                $this->db->where('status', 0)->update('about', ['menu_image' => $menuImage]);
+            }
             $this->session->set_flashdata('success', 'Ajab Shahar content updated successfully!');
         } else {
             $dbError = $this->db->error();
@@ -139,7 +349,11 @@ class AddAboutController extends CI_Controller {
 
         $typeLabel = $this->input->post('type', true);
         $typeValue = $this->mapKabirTypeToInt($typeLabel);
-        $visualContent = $this->input->post('meta_description', false);
+        // Visual content from canonical field (legacy fallback to meta_description for old forms)
+        $visualContent = $this->input->post('visual_content', false);
+        if ($visualContent === null || trim((string)$visualContent) === '') {
+            $visualContent = $this->input->post('meta_description', false);
+        }
 
         if ($typeValue === null) {
             $this->session->set_flashdata('error', 'Invalid type selected.');
@@ -153,15 +367,25 @@ class AddAboutController extends CI_Controller {
             return;
         }
 
+        $menuImage = $this->_handle_menu_image_upload('kabir-project');
+
         $data = [
             'kabir_type' => $typeValue,
             'visual_content' => $visualContent,
+            'meta_title' => $this->input->post('meta_title') ?? '',
+            'meta_keywords' => $this->input->post('meta_keywords') ?? '',
+            'meta_description' => $this->input->post('meta_description') ?? '',
+            'menu_image' => $menuImage,
             'status' => 1,
             'created_at' => date('Y-m-d H:i:s')
         ];
 
         $insert = $this->db->insert('about', $data);
         if ($insert) {
+            // Logo is shared across all Kabir Project tabs — propagate to all status=1 rows
+            if ($menuImage !== '') {
+                $this->db->where('status', 1)->update('about', ['menu_image' => $menuImage]);
+            }
             $this->session->set_flashdata('success', 'Kabir Project content saved successfully!');
         } else {
             $dbError = $this->db->error();
@@ -187,7 +411,11 @@ class AddAboutController extends CI_Controller {
 
         $typeLabel = $this->input->post('type', true);
         $typeValue = $this->mapKabirTypeToInt($typeLabel);
-        $visualContent = $this->input->post('meta_description', false);
+        // Visual content from canonical field (legacy fallback to meta_description for old forms)
+        $visualContent = $this->input->post('visual_content', false);
+        if ($visualContent === null || trim((string)$visualContent) === '') {
+            $visualContent = $this->input->post('meta_description', false);
+        }
 
         if ($typeValue === null) {
             $this->session->set_flashdata('error', 'Invalid type selected.');
@@ -201,9 +429,15 @@ class AddAboutController extends CI_Controller {
             return;
         }
 
+        $menuImage = $this->_handle_menu_image_upload('kabir-project');
+
         $data = [
             'kabir_type' => $typeValue,
             'visual_content' => $visualContent,
+            'meta_title' => $this->input->post('meta_title') ?? '',
+            'meta_keywords' => $this->input->post('meta_keywords') ?? '',
+            'meta_description' => $this->input->post('meta_description') ?? '',
+            'menu_image' => $menuImage,
             'status' => 1
         ];
 
@@ -212,6 +446,10 @@ class AddAboutController extends CI_Controller {
         $update = $this->db->update('about', $data);
 
         if ($update) {
+            // Logo is shared across all Kabir Project tabs — propagate to all status=1 rows
+            if ($menuImage !== '') {
+                $this->db->where('status', 1)->update('about', ['menu_image' => $menuImage]);
+            }
             $this->session->set_flashdata('success', 'Kabir Project content updated successfully!');
         } else {
             $dbError = $this->db->error();
@@ -225,9 +463,9 @@ class AddAboutController extends CI_Controller {
     public function save() {
         $image = '';
         if (!empty($_FILES['image']['name'])) {
-            $upload_path = FCPATH . 'Uploads/';
+            $upload_path = FCPATH . 'uploads/';
             if (!is_dir($upload_path)) {
-                mkdir($upload_path, 0755, true);
+                @mkdir($upload_path, 0755, true);
             }
             if (!is_dir($upload_path) || !is_writable($upload_path)) {
                 $this->session->set_flashdata('error', 'Upload path is not valid or writable. Please check the uploads folder permissions.');
@@ -281,7 +519,8 @@ class AddAboutController extends CI_Controller {
     public function update($id) {
         $image = $this->input->post('existing_image');
         if (!empty($_FILES['image']['name'])) {
-            $config['upload_path'] = './Uploads/';
+            $config['upload_path'] = FCPATH . 'uploads/';
+            if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
             $config['allowed_types'] = 'gif|jpg|png|jpeg';
             $config['max_size'] = 2048;
             $config['file_name'] = time() . '_' . str_replace(' ', '_', $_FILES['image']['name']);
@@ -289,8 +528,9 @@ class AddAboutController extends CI_Controller {
             if ($this->upload->do_upload('image')) {
                 $image = $this->upload->data('file_name');
                 $existing_about = $this->AddAboutModel->get_about_by_id($id);
-                if ($existing_about->image && file_exists('./Uploads/' . $existing_about->image)) {
-                    unlink('./Uploads/' . $existing_about->image);
+                $existingPath = FCPATH . 'uploads/' . $existing_about->image;
+                if ($existing_about->image && file_exists($existingPath)) {
+                    @unlink($existingPath);
                 }
             } else {
                 $this->session->set_flashdata('error', 'Failed to upload image: ' . $this->upload->display_errors());

@@ -10,6 +10,201 @@ include('inc/sidebar.php');
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" />
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Bootstrap Multiselect (button + dropdown + Select All + Search UI) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-multiselect/0.9.13/css/bootstrap-multiselect.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-multiselect/0.9.13/js/bootstrap-multiselect.min.js"></script>
+    <style>
+        /* Hide Bootstrap's default dropdown-toggle ::after caret (we render our own <b class="caret">) */
+        .multiselect-native-select .dropdown-toggle::after { display: none !important; }
+        /* Replicate angular-multi-select UI from ajab_old/common/lib/angular-multi-select/angular-multi-select.css */
+        .multiselect-native-select {
+            position: relative;
+            width: 200px !important;
+            max-width: 200px !important;
+            display: inline-block;
+        }
+        .multiselect-native-select .btn-group {
+            width: 200px !important;
+            max-width: 200px !important;
+        }
+        .multiselect-native-select .btn.multiselect {
+            display: block;
+            position: relative;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid #c6c6c6 !important;
+            padding: 6px 24px 6px 10px;
+            font-size: 14px;
+            min-height: 38px;
+            max-height: 220px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-radius: 4px;
+            color: #555;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            background-color: #fff !important;
+            background-image: linear-gradient(#fff, #f7f7f7) !important;
+            box-shadow: none;
+            width: 200px !important;
+            max-width: 200px !important;
+            box-sizing: border-box;
+            line-height: 1.5;
+        }
+        .multiselect-native-select .btn.multiselect .multiselect-selected-text {
+            display: block;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            line-height: 1.5;
+            width: 100%;
+            text-align: center;
+        }
+        .multiselect-native-select .btn.multiselect .caret {
+            position: absolute;
+            right: 8px;
+            top: 16px;
+            display: inline-block;
+            width: 0; height: 0;
+            border-top: 4px solid #333;
+            border-right: 4px solid transparent;
+            border-left: 4px solid transparent;
+        }
+        .multiselect-native-select .btn.multiselect:hover {
+            background-image: linear-gradient(#fff, #e9e9e9);
+        }
+        .multiselect-native-select .btn.multiselect:focus {
+            background-image: linear-gradient(#fff, #e9e9e9);
+            outline: none;
+        }
+        .multiselect-container.dropdown-menu {
+            background-color: #fff;
+            border: 1px solid rgba(0,0,0,0.15);
+            border-radius: 4px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.175);
+            min-width: 278px;
+            padding: 0;
+            margin: 2px 0 0;
+            max-height: 380px;
+            overflow-y: auto;
+        }
+        /* Hide library's built-in Select All & filter — we render our own */
+        .multiselect-container > li.multiselect-item.multiselect-all,
+        .multiselect-container > li.multiselect-item.multiselect-filter {
+            display: none !important;
+        }
+        /* Helper container holds Select All/None/Reset + filter — old library: padding 8px 8px 0px 8px, bottom border */
+        .ms-helper-container {
+            padding: 8px 8px 0 8px !important;
+            border-bottom: 1px solid #ddd;
+            list-style: none;
+            background: #fff;
+        }
+        .ms-action-row {
+            list-style: none;
+            margin: 0; padding: 0;
+            display: block;
+        }
+        .ms-action-row .ms-action-btn {
+            display: inline-block;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            height: 26px;
+            font-size: 13px;
+            border-radius: 2px;
+            color: #666;
+            background-color: #f1f1f1;
+            line-height: 1.6;
+            margin: 0 4px 8px 0;
+            padding: 0 10px;
+        }
+        .ms-action-row .ms-action-btn:hover {
+            border: 1px solid #ccc;
+            color: #999;
+            background-color: #f4f4f4;
+        }
+        .ms-action-row .ms-action-btn:focus {
+            border: 1px solid #66AFE9 !important;
+            box-shadow: inset 0 0 1px rgba(0,0,0,.035), 0 0 5px rgba(82,168,236,.7);
+            outline: none;
+        }
+        .ms-search-input {
+            border-radius: 2px;
+            border: 1px solid #ccc;
+            height: 26px;
+            font-size: 14px;
+            width: 100%;
+            padding-left: 7px;
+            box-sizing: border-box;
+            color: #888;
+            margin: 0 0 8px 0;
+        }
+        .ms-search-input:focus {
+            border: 1px solid #66AFE9 !important;
+            box-shadow: inset 0 0 1px rgba(0,0,0,.035), 0 0 5px rgba(82,168,236,.7);
+            outline: none;
+        }
+        /* Item area — checkBoxContainer in old: padding 8px */
+        .multiselect-container > li:not(.ms-helper-container):not(.ms-action-row):not(.ms-search-row) {
+            margin: 0 8px;
+        }
+        .multiselect-container li > a {
+            padding: 0;
+            background: transparent;
+        }
+        .multiselect-container li > a > label.checkbox {
+            display: block;
+            padding: 3px;
+            color: #444;
+            white-space: nowrap;
+            border: 1px solid transparent;
+            position: relative;
+            margin: 0;
+            cursor: pointer;
+            font-weight: normal;
+        }
+        /* Hide native checkbox visually but keep functional */
+        .multiselect-container li > a > label.checkbox > input[type=checkbox] {
+            position: absolute;
+            left: -9999px;
+            margin: 0;
+        }
+        /* Selected item: light gradient */
+        .multiselect-container li.active > a > label.checkbox,
+        .multiselect-container li > a > label.checkbox.checked {
+            background-image: linear-gradient(#e9e9e9, #f1f1f1);
+            color: #555;
+            border-top: 1px solid #e4e4e4;
+            border-left: 1px solid #e4e4e4;
+            border-right: 1px solid #d9d9d9;
+        }
+        /* Add tick mark on selected items via ::after */
+        .multiselect-container li.active > a > label.checkbox::after {
+            content: "\2714";
+            display: inline-block;
+            position: absolute;
+            right: 10px;
+            top: 4px;
+            font-size: 10px;
+            color: #555;
+        }
+        /* Hover: dark gradient with white text */
+        .multiselect-container li:hover > a > label.checkbox {
+            background-image: linear-gradient(#c1c1c1, #999) !important;
+            color: #fff !important;
+            border: 1px solid #ccc !important;
+        }
+        .multiselect-container li:hover.active > a > label.checkbox::after {
+            color: #fff;
+        }
+        .multiselect-container .ms-helper-container:hover {
+            background: #fff !important;
+        }
+    </style>
 </head>
 
 <style>
@@ -168,61 +363,7 @@ include('inc/sidebar.php');
         background-color: #f44336;
     }
 
-    /* Bootstrap-multiselect fix: prevent global input styles from breaking option checkboxes */
-    .multiselect-native-select .btn-group,
-    .multiselect-native-select .multiselect {
-        width: 100% !important;
-    }
-    .multiselect-native-select .multiselect {
-        text-align: left;
-        white-space: normal;
-        min-height: 44px;
-        max-height: 130px;
-        overflow-y: auto;
-    }
-    .multiselect-native-select .multiselect .buttonLabel {
-        display: inline;
-        font-size: 15px;
-        font-weight: 500;
-    }
-    .multiselect-native-select .multiselect .caret {
-        float: right;
-        margin-top: 8px;
-    }
-    .multiselect-container.dropdown-menu {
-        width: 100%;
-        min-width: 320px;
-        max-height: 380px;
-        overflow-y: auto;
-    }
-    .multiselect-container > li > a > label {
-        padding: 6px 12px 6px 30px !important;
-        font-size: 15px;
-        white-space: normal;
-    }
-    .multiselect-container input[type="checkbox"] {
-        width: auto !important;
-        height: auto !important;
-        padding: 0 !important;
-        margin: 0 8px 0 0 !important;
-        border: 0 !important;
-        box-shadow: none !important;
-        position: static !important;
-    }
-    .multiselect-container .multiselect-filter input {
-        width: 100% !important;
-        max-width: none !important;
-    }
-    .multiselect-extra-actions {
-        display: flex;
-        gap: 8px;
-        padding: 8px 10px 4px;
-    }
-    .multiselect-extra-actions .btn {
-        padding: 4px 10px;
-        font-size: 13px;
-        line-height: 1.2;
-    }
+    /* Bootstrap-multiselect old conflicting rules removed — new old-style rules are in <head> <style> block above */
 
     .search-box {
         width: 100%;
@@ -314,9 +455,10 @@ include('inc/sidebar.php');
     }
 
     .select2-container .select2-selection--multiple {
-        height: 5px;
-        padding-top: 2px;
+        min-height: 38px;
+        padding: 2px 6px;
         display: flex !important;
+        flex-wrap: wrap !important;
         align-items: center !important;
         font-size: 14px !important;
         border: 1px solid #ccc !important;
@@ -450,6 +592,24 @@ include('inc/sidebar.php');
       from { opacity: 0; transform: scale(0.95); }
       to { opacity: 1; transform: scale(1); }
     }
+
+    /* Singer/Poet/Translator dialogs — NOT Bootstrap .modal (avoids conflict + broken close) */
+    .song-person-dialog {
+      display: none;
+      position: fixed;
+      z-index: 100050;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background: rgba(0, 0, 0, 0.45);
+      align-items: center;
+      justify-content: center;
+    }
+    .song-person-dialog .modal-content {
+      margin: 8vh auto;
+    }
 </style>
 
 <!-- Content Wrapper. Contains page content -->
@@ -494,7 +654,20 @@ include('inc/sidebar.php');
     $selected_related_songs = (isset($song['related_songs']) && trim((string) $song['related_songs']) !== '')
         ? array_values(array_filter(array_map('trim', explode(',', $song['related_songs'])))) : [];
     $show_on_landing = isset($song['showOnLandingPage']) ? $song['showOnLandingPage'] : '';
-    $select_publish = isset($song['publish']) ? $song['publish'] : '';
+    // Normalize publish — DB may store 1 / '1' / true / 'true' / 'yes' (or 0 / '0' / false / 'false' / 'no').
+    // Fallback to legacy `is_authoring_complete` column if `publish` is empty (mirrors list view).
+    $rawPublish = isset($song['publish']) && $song['publish'] !== '' && $song['publish'] !== null
+        ? $song['publish']
+        : (isset($song['is_authoring_complete']) ? $song['is_authoring_complete'] : '');
+    $select_publish = '';
+    if ($rawPublish !== '' && $rawPublish !== null) {
+        if ($rawPublish === 1 || $rawPublish === '1' || $rawPublish === true ||
+            (is_string($rawPublish) && in_array(strtolower($rawPublish), ['true','yes','y','1'], true))) {
+            $select_publish = 'true';
+        } else {
+            $select_publish = 'false';
+        }
+    }
     $songLyricsOriginal = isset($song['songLyricsOriginal']) ? $song['songLyricsOriginal'] : '';
     // Transliteration column is DB `songLyricsNotes`; Translation column is DB `songLyricsTranslated`
     $songLyricsTransliteration = isset($song['songLyricsNotes']) ? $song['songLyricsNotes'] : '';
@@ -556,7 +729,7 @@ include('inc/sidebar.php');
                         <div class="row">
                             <div class="col-12">
                                 <div class="form-group" style="display: flex; align-items: center; margin-bottom: 18px;">
-                                    <label style="flex: 0 0 220px; padding-right: 18px;">Umbrella Title <span style="color:red">*</span></label>
+                                    <label style="flex: 0 0 220px; padding-right: 18px;">Umbrella Title</label>
                                     
                                         <?php
                                         // Convert comma-separated string to array
@@ -569,7 +742,8 @@ include('inc/sidebar.php');
                                         // Old DB relation: song.umbrella_title_id -> title.id
                                         $umbrella_rows = $this->db->query("SELECT id, english_transliteration, original_title FROM title ORDER BY english_transliteration ASC, original_title ASC")->result();
                                         ?>
-                                        <select class="form-control select2 col-md-4" multiple="multiple" id="umbrellaTitle" name="umbrellaTitle[]">
+                                    <div class="d-flex align-items-center" style="gap: 8px; flex: 0 0 auto;">
+                                        <select class="form-control select2" multiple="multiple" data-skip-select2="true" id="umbrellaTitle" name="umbrellaTitle[]">
                                             <option value="">Select Umbrella Title</option>
                                             <?php foreach ($umbrella_rows as $row): ?>
                                                 <?php
@@ -580,12 +754,37 @@ include('inc/sidebar.php');
                                                 <option value="<?= htmlspecialchars($rid) ?>" <?= in_array($rid, array_map('strval', $selected_umbrellaTitle), true) ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                    <div style="margin-left: 20px;">
-                                        <button type="button" class="btn btn-info" id="editBtn">Edit</button>
-                                        <button type="button" class="btn btn-success" id="addBtn">Add New</button>
-                                        <button type="button" class="btn btn-danger" id="deleteBtn">Delete</button>
+                                        <button type="button" class="btn btn-info btn-sm" id="editBtn">Edit</button>
+                                        <button type="button" class="btn btn-success btn-sm" id="addBtn">Add New</button>
+                                        <button type="button" class="btn btn-danger btn-sm" id="deleteBtn">Delete</button>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div id="umbrellaTitleEditPanel" class="card card-outline card-secondary mt-2" style="display:none;">
+                            <div class="card-body py-2">
+                                <input type="hidden" id="umbrellaEditId" value="">
+                                <div class="form-row mb-2">
+                                    <label class="col-md-2 col-form-label">Original</label>
+                                    <div class="col-md-6">
+                                        <input type="text" class="form-control" id="umbrellaEditOriginal" placeholder="Original title">
+                                    </div>
+                                </div>
+                                <div class="form-row mb-2">
+                                    <label class="col-md-2 col-form-label">Transliteration</label>
+                                    <div class="col-md-6">
+                                        <input type="text" class="form-control" id="umbrellaEditTranslit" placeholder="Transliteration">
+                                    </div>
+                                </div>
+                                <div class="form-row mb-2">
+                                    <label class="col-md-2 col-form-label">Translation</label>
+                                    <div class="col-md-6">
+                                        <input type="text" class="form-control" id="umbrellaEditTrans" placeholder="Translation">
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" id="umbrellaEditSaveBtn">Save</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="umbrellaEditCancelBtn">Cancel</button>
                             </div>
                         </div>
 
@@ -601,7 +800,18 @@ include('inc/sidebar.php');
                                                                 </button>
                                                             </div>
                                                             <div class="modal-body">
-                                                                <input type="text" class="form-control" id="addUmbrellaInput" placeholder="Enter new umbrella title">
+                                                                <div class="form-group">
+                                                                    <label>Transliteration <span style="color:red">*</span></label>
+                                                                    <input type="text" class="form-control" id="addUmbrellaTransliteration" placeholder="Enter transliteration">
+                                                                </div>
+                                                                <div class="form-group">
+                                                                    <label>Translated</label>
+                                                                    <input type="text" class="form-control" id="addUmbrellaTranslation" placeholder="Enter translation">
+                                                                </div>
+                                                                <div class="form-group">
+                                                                    <label>Original</label>
+                                                                    <input type="text" class="form-control" id="addUmbrellaOriginal" placeholder="Enter original title">
+                                                                </div>
                                                             </div>
                                                             <div class="modal-footer">
                                                                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
@@ -664,7 +874,10 @@ include('inc/sidebar.php');
                                 <div class="form-group" style="display: flex; align-items: center; gap:10px; margin-bottom: 18px;">
                                     <?php 
                                     // Load singers from person table and build full name from parts
-                                    $singer_rows = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person WHERE type = 1 ORDER BY first_name ASC, middle_name ASC, last_name ASC")->result();
+                                    $singer_rows = $this->db->query("
+                                        SELECT id, first_name, middle_name, last_name FROM person
+                                        ORDER BY LOWER(TRIM(CONCAT(IFNULL(first_name,''),' ',IFNULL(middle_name,''),' ',IFNULL(last_name,'')))) ASC
+                                    ")->result();
                                     foreach ($selected_singers as $sid) {
                                         if ($sid === '' || !ctype_digit((string) $sid)) {
                                             continue;
@@ -684,9 +897,9 @@ include('inc/sidebar.php');
                                         }
                                     }
                                     ?>
-                                    <label style="flex: 0 0 220px; padding-right: 18px;">Singer Name</label>
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="singer[]" id="singer" onchange="if(window.updateSingerPoetVisibility){window.updateSingerPoetVisibility('singer');}">
-                                            <option value="">Select Singer</option>
+                                    <label style="flex: 0 0 220px; padding-right: 18px;">Singer <span style="color:red">*</span></label>
+                                    <div class="input-btn-group d-flex align-items-center" style="gap: 8px; min-width: 0; flex: 0 0 auto;">
+                                        <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="singer[]" id="singer" data-placeholder="Select Singer" onchange="if(window.updateSingerPoetVisibility){window.updateSingerPoetVisibility('singer');}">
                                             <?php foreach ($singer_rows as $p): 
                                                 $parts = [];
                                                 if (!empty(trim($p->first_name)))  { $parts[] = trim($p->first_name); }
@@ -702,7 +915,9 @@ include('inc/sidebar.php');
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <button type="button" class="btn btn-success btn-sm" id="addSingerBtn">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-success ml-2" id="addSingerBtn" style="white-space: nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-primary ml-1" id="editSingerBtn" style="white-space: nowrap;">Edit</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -710,9 +925,13 @@ include('inc/sidebar.php');
                         <div class="row" id="poetRow">
                             <div class="col-12">
                                 <div class="form-group" style="display: flex; align-items: center; gap:10px; margin-bottom: 18px;">
-                                    <label style="flex: 0 0 220px; padding-right: 18px;">Poet</label>
+                                    <label style="flex: 0 0 220px; padding-right: 18px;">Poet <span style="color:red">*</span></label>
+                                    <div class="input-btn-group d-flex align-items-center" style="gap: 8px; min-width: 0; flex: 0 0 auto;">
                                         <?php
-                                        $poet_rows = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person WHERE type = 2 ORDER BY first_name ASC, middle_name ASC, last_name ASC")->result();
+                                        $poet_rows = $this->db->query("
+                                            SELECT id, first_name, middle_name, last_name FROM person
+                                            ORDER BY LOWER(TRIM(CONCAT(IFNULL(first_name,''),' ',IFNULL(middle_name,''),' ',IFNULL(last_name,'')))) ASC
+                                        ")->result();
                                     foreach ($selected_poet as $pidRaw) {
                                         if ($pidRaw === '' || !ctype_digit((string) $pidRaw)) {
                                             continue;
@@ -732,8 +951,7 @@ include('inc/sidebar.php');
                                         }
                                     }
                                         ?>
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="poet[]" id="poet" onchange="if(window.updateSingerPoetVisibility){window.updateSingerPoetVisibility('poet');}">
-                                            <option value="">Select Poet</option>
+                                        <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="poet[]" id="poet" data-placeholder="Select Poet" onchange="if(window.updateSingerPoetVisibility){window.updateSingerPoetVisibility('poet');}">
                                             <?php foreach ($poet_rows as $p): 
                                                 $parts = [];
                                                 if (!empty(trim($p->first_name)))  { $parts[] = trim($p->first_name); }
@@ -749,13 +967,15 @@ include('inc/sidebar.php');
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <button type="button" class="btn btn-success btn-sm" id="addPoetBtn">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-success ml-2" id="addPoetBtn" style="white-space: nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-primary ml-1" id="editPoetBtn" style="white-space: nowrap;">Edit</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Add Singer Modal -->
-                        <div class="modal" id="addSingerModal">
+                        <div class="song-person-dialog" id="addSingerModal" style="display:none;">
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h2>Add New Singer</h2>
@@ -778,8 +998,63 @@ include('inc/sidebar.php');
                             </div>
                         </div>
 
+                        <div class="row" id="attributedPoetRow">
+                            <div class="col-12">
+                                <div class="form-group" style="display: flex; align-items: center; gap:10px; margin-bottom: 18px;">
+                                    <label style="flex: 0 0 220px; padding-right: 18px;">Attributed Poet</label>
+                                    <div class="input-btn-group d-flex align-items-center" style="gap: 8px; min-width: 0; flex: 0 0 auto;">
+                                        <?php
+                                        $selected_attributed_poet = [];
+                                        if (isset($song) && is_array($song)) {
+                                            if (isset($song['attributed_poet']) && trim((string) $song['attributed_poet']) !== '') {
+                                                $selected_attributed_poet = array_values(array_filter(array_map('trim', explode(',', $song['attributed_poet']))));
+                                            }
+                                        }
+                                        // Use same poet_rows for attributed poet selection
+                                        foreach ($selected_attributed_poet as $pidRaw) {
+                                            if ($pidRaw === '' || !ctype_digit((string) $pidRaw)) {
+                                                continue;
+                                            }
+                                            $found = false;
+                                            foreach ($poet_rows as $p) {
+                                                if ((string) $p->id === (string) $pidRaw) {
+                                                    $found = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!$found) {
+                                                $extra = $this->db->get_where('person', ['id' => (int) $pidRaw])->row();
+                                                if ($extra) {
+                                                    $poet_rows[] = $extra;
+                                                }
+                                            }
+                                        }
+                                        ?>
+                                        <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="attributed_poet[]" id="attributed_poet" data-placeholder="Select Attributed Poet" onchange="if(window.updateSingerPoetVisibility){window.updateSingerPoetVisibility('attributed_poet');}">
+                                            <?php foreach ($poet_rows as $p): 
+                                                $parts = [];
+                                                if (!empty(trim($p->first_name)))  { $parts[] = trim($p->first_name); }
+                                                if (!empty(trim($p->middle_name))) { $parts[] = trim($p->middle_name); }
+                                                if (!empty(trim($p->last_name)))   { $parts[] = trim($p->last_name); }
+                                                $fullName = implode(' ', $parts);
+                                                if ($fullName === '') { $fullName = 'Unnamed'; }
+                                                $pid = (string)$p->id;
+                                                $isSelected = in_array($pid, array_map('strval', $selected_attributed_poet), true);
+                                            ?>
+                                                <option value="<?= htmlspecialchars($pid) ?>" <?= $isSelected ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($fullName) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="button" class="btn btn-sm btn-success ml-2" id="addAttributedPoetBtn" style="white-space: nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-primary ml-1" id="editAttributedPoetBtn" style="white-space: nowrap;">Edit</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Add Poet Modal -->
-                        <div class="modal" id="addPoetModal">
+                        <div class="song-person-dialog" id="addPoetModal" style="display:none;">
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h2>Add New Poet</h2>
@@ -798,6 +1073,30 @@ include('inc/sidebar.php');
                                 <div class="modal-footer">
                                     <button type="button" class="btn-secondary" id="cancelAddPoet">Cancel</button>
                                     <button type="button" class="btn-success" id="addPoet">Add</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Add Attributed Poet Modal -->
+                        <div class="song-person-dialog" id="addAttributedPoetModal" style="display:none;">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h2>Add New Attributed Poet</h2>
+                                    <button class="close-btn" id="closeAddAttributedPoet">&times;</button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group">
+                                        <label>Name</label>
+                                        <input type="text" id="addAttributedPoetName" placeholder="Enter Attributed Poet Name">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Hyperlink (Optional)</label>
+                                        <input type="url" id="addAttributedPoetLink" placeholder="https://example.com">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn-secondary" id="cancelAddAttributedPoet">Cancel</button>
+                                    <button type="button" class="btn-success" id="addAttributedPoet">Add</button>
                                 </div>
                             </div>
                         </div>
@@ -836,12 +1135,50 @@ include('inc/sidebar.php');
                             </div>
                         </div>
                         <?php
+                        $songInterviewAudio = '';
+                        if (isset($song) && is_array($song) && !empty($song['interview_audio'])) {
+                            $songInterviewAudio = trim((string) $song['interview_audio']);
+                        }
+                        ?>
+                        <div class="form-row" style="display: flex; align-items: flex-start; margin-bottom: 18px;">
+                            <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">Upload Audio Track</div>
+                            <div style="flex: 1;">
+                                <?php if ($songInterviewAudio !== ''): ?>
+                                    <input type="hidden" name="interview_audio_existing" value="<?= htmlspecialchars($songInterviewAudio) ?>">
+                                    <p class="mb-2 text-muted small">Current file is kept unless you choose a new audio file.</p>
+                                <?php endif; ?>
+                                <input type="file" name="interview_audio_upload" id="interview_audio_upload" class="form-control col-md-4" accept="audio/*">
+                            </div>
+                        </div>
+                        <div class="form-row" id="addToRadioRow" style="display: <?= $songInterviewAudio !== '' ? 'flex' : 'none' ?>; align-items: center; margin-bottom: 18px;">
+                            <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">Radio</div>
+                            <div style="flex: 1;">
+                                <label class="mb-0" style="font-weight: normal;">
+                                    <input type="checkbox" name="add_to_radio" id="add_to_radio" value="1">
+                                    Add to radio (create or update a radio track for this song using this audio)
+                                </label>
+                            </div>
+                        </div>
+                        <script>
+                        (function () {
+                            var f = document.getElementById('interview_audio_upload');
+                            var row = document.getElementById('addToRadioRow');
+                            var existing = <?= json_encode($songInterviewAudio !== '') ?>;
+                            if (!f || !row) return;
+                            function refresh() {
+                                var hasFile = f.files && f.files.length > 0;
+                                row.style.display = (hasFile || existing) ? 'flex' : 'none';
+                            }
+                            f.addEventListener('change', refresh);
+                        })();
+                        </script>
+                        <?php
                         $existingThumbnailUrl = '';
                         if (isset($song) && is_array($song) && !empty($song['thumbnailUrl'])) {
                             $existingThumbnailUrl = trim((string) $song['thumbnailUrl']);
                         }
                         // Preview only: production base (DB path in hidden field stays unchanged for save/update).
-                        $thumbnailPublicBase = 'https://ajabshahar.aaravega.in';
+                        $thumbnailPublicBase = 'https://ajab.designanddevelopment.in/admin';
                         $thumbnailPreviewSrc = '';
                         if ($existingThumbnailUrl !== '') {
                             if (preg_match('#^https?://#i', $existingThumbnailUrl)) {
@@ -923,6 +1260,9 @@ include('inc/sidebar.php');
                                 width: 220px !important;
                                 max-width: 100%;
                             }
+                            .song-translation-stack .select2-container .select2-selection--multiple .select2-selection__placeholder {
+                                color: #6c757d;
+                            }
                             .song-translation-stack .translation-editor .cke {
                                 width: 100% !important;
                                 display: block !important;
@@ -947,10 +1287,7 @@ include('inc/sidebar.php');
                             <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">Song Lyrics (Translation)</div>
                             <div style="flex: 1;">
                                 <div class="translation-main-group">
-                                    <div>
-                                        <button type="button" class="btn btn-primary btn-sm" id="addSongTranslationBtn">Add Song Translation</button>
-                                    </div>
-                                    <div class="translation-select">
+                                    <div class="translation-select input-btn-group d-flex align-items-center" style="flex-wrap: nowrap; gap: 8px; min-width: 0;">
                                 <?php
                                 // Translators stored on song as comma-separated person.id (same as couplet form — person table, not translator table)
                                 $translator_rows = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person ORDER BY first_name ASC, middle_name ASC, last_name ASC")->result();
@@ -973,8 +1310,7 @@ include('inc/sidebar.php');
                                     }
                                 }
                                 ?>
-                                <select class="form-control select2 col-md-4" multiple="multiple" name="translator[]" id="translator">
-                                    <option value="">Select Translator</option>
+                                <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="translator[]" id="translator" style="flex: 1; min-width: 0;" data-placeholder="Select Translator" data-select2-search-placeholder="Select Translator">
                                     <?php foreach ($translator_rows as $p):
                                         $parts = [];
                                         if (!empty(trim($p->first_name))) {
@@ -998,9 +1334,14 @@ include('inc/sidebar.php');
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
+                                        <button type="button" class="btn btn-sm btn-success ml-2" id="addTranslatorBtn" style="white-space: nowrap; flex-shrink: 0;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-primary ml-1" id="editTranslatorBtn" style="white-space: nowrap; flex-shrink: 0;">Edit</button>
                                     </div>
                                     <div class="translation-editor">
                                         <textarea id="songLyricsTranslated" name="songLyricsTranslated" class="form-control"><?= htmlspecialchars($songLyricsTranslation) ?></textarea>
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <button type="button" class="btn btn-primary btn-sm" id="addSongTranslationBtn">Add Song Translation</button>
                                     </div>
                                     <div id="extraSongTranslations"></div>
                                 </div>
@@ -1015,7 +1356,7 @@ include('inc/sidebar.php');
                         </div>
 
                         <!-- Add Translator Modal -->
-                        <div class="modal" id="addTranslatorModal">
+                        <div class="song-person-dialog" id="addTranslatorModal" style="display:none;">
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h2>Add New Translator</h2>
@@ -1045,10 +1386,177 @@ include('inc/sidebar.php');
                             </div>
                         </div>
 
+                        <?php
+                            // Glossary keywords: same source as Related Keywords (word table)
+                            // Pre-selected: parse `songglossary` as CSV of word IDs (numeric only)
+                            $selected_song_glossary = [];
+                            if (isset($song['songglossary']) && trim((string)$song['songglossary']) !== '') {
+                                foreach (array_filter(array_map('trim', explode(',', (string)$song['songglossary']))) as $g) {
+                                    if (ctype_digit((string)$g)) { $selected_song_glossary[] = (string)(int)$g; }
+                                }
+                                $selected_song_glossary = array_values(array_unique($selected_song_glossary));
+                            }
+                            $glossary_word_rows = $this->db->table_exists('word')
+                                ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) ASC, id ASC")->result()
+                                : [];
+                        ?>
                         <div class="form-row" style="display: flex; align-items: center; margin-bottom: 18px;">
                             <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">Song Glossary</div>
-                            <div style="flex: 1;">
-                                <textarea class="form-control col-md-8" name="songglossary" id="songglossary" rows="3"><?= isset($song['songglossary']) ? htmlspecialchars($song['songglossary']) : '' ?></textarea>
+                            <div style="flex: 0 0 auto;">
+                                <div class="input-btn-group" style="display: inline-flex; align-items: center; gap: 8px;">
+                                    <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="songglossary[]" id="songglossary" data-placeholder="Select Glossary Keywords">
+                                        <?php foreach ($glossary_word_rows as $gw) : ?>
+                                            <option value="<?= (int)$gw->id ?>" <?= in_array((string)$gw->id, $selected_song_glossary, true) ? 'selected' : '' ?>><?= htmlspecialchars((string)$gw->word_transliteration) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-success" id="addGlossaryWordBtn" style="white-space:nowrap;">Add New</button>
+                                    <button type="button" class="btn btn-sm btn-primary ml-1" id="editGlossaryWordBtn" style="white-space:nowrap;">Edit</button>
+                                </div>
+
+                                <!-- Add New Glossary Word Modal -->
+                                <div class="modal fade" id="addGlossaryWordModal" tabindex="-1" role="dialog" aria-labelledby="addGlossaryWordModalLabel" aria-hidden="true">
+                                    <div class="modal-dialog" role="document">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="addGlossaryWordModalLabel">Add New Glossary Word</h5>
+                                                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                                    <span aria-hidden="true">&times;</span>
+                                                </button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="form-group">
+                                                    <label>Original</label>
+                                                    <input type="text" class="form-control" id="newGlossaryOriginal" placeholder="Enter Original">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Translation</label>
+                                                    <input type="text" class="form-control" id="newGlossaryTranslation" placeholder="Enter Translation">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Transliteration</label>
+                                                    <input type="text" class="form-control" id="newGlossaryTransliteration" placeholder="Enter Transliteration">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Word Meaning</label>
+                                                    <textarea class="form-control" id="newGlossaryMeaning" rows="3" placeholder="Enter word meaning"></textarea>
+                                                </div>
+                                                <div class="form-group" style="margin-top: 8px;">
+                                                    <label style="display:flex; align-items:center; gap:8px; margin-bottom:0;">
+                                                        <input type="checkbox" id="newGlossaryIsGlossary" value="1" style="width:auto; margin:0;">
+                                                        <span>Is this a Glossary Word?</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                                                <button type="button" class="btn btn-primary" id="saveGlossaryWordBtn">Save</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <script>
+                                (function () {
+                                    function showModal(modal) {
+                                        try {
+                                            if (window.bootstrap && bootstrap.Modal) {
+                                                bootstrap.Modal.getOrCreateInstance(modal).show(); return;
+                                            }
+                                            if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('show'); return; }
+                                        } catch (e) {}
+                                        modal.classList.add('show');
+                                        modal.style.display = 'block';
+                                        document.body.classList.add('modal-open');
+                                        if (!document.getElementById('gw-modal-backdrop')) {
+                                            var bd = document.createElement('div');
+                                            bd.id = 'gw-modal-backdrop';
+                                            bd.className = 'modal-backdrop fade show';
+                                            document.body.appendChild(bd);
+                                        }
+                                    }
+                                    function hideModal(modal) {
+                                        try {
+                                            if (window.bootstrap && bootstrap.Modal) {
+                                                var inst = bootstrap.Modal.getInstance(modal);
+                                                if (inst) { inst.hide(); return; }
+                                            }
+                                            if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('hide'); return; }
+                                        } catch (e) {}
+                                        modal.classList.remove('show');
+                                        modal.style.display = 'none';
+                                        document.body.classList.remove('modal-open');
+                                        var bd = document.getElementById('gw-modal-backdrop');
+                                        if (bd) bd.remove();
+                                    }
+                                    function init() {
+                                        var btn = document.getElementById('addGlossaryWordBtn');
+                                        var modal = document.getElementById('addGlossaryWordModal');
+                                        var saveBtn = document.getElementById('saveGlossaryWordBtn');
+                                        var sel = document.getElementById('songglossary');
+                                        if (!btn || !modal || !saveBtn || !sel) { setTimeout(init, 200); return; }
+                                        modal.querySelectorAll('[data-dismiss="modal"], .close, .btn-secondary').forEach(function (b) {
+                                            b.addEventListener('click', function (e) { e.preventDefault(); hideModal(modal); });
+                                        });
+                                        btn.onclick = function () {
+                                            ['newGlossaryOriginal','newGlossaryTranslation','newGlossaryTransliteration','newGlossaryMeaning'].forEach(function (id) {
+                                                var f = document.getElementById(id); if (f) f.value = '';
+                                            });
+                                            var cb = document.getElementById('newGlossaryIsGlossary'); if (cb) cb.checked = false;
+                                            showModal(modal);
+                                            setTimeout(function () { var f = document.getElementById('newGlossaryTransliteration'); if (f) f.focus(); }, 200);
+                                        };
+                                        saveBtn.onclick = async function () {
+                                            var orig = (document.getElementById('newGlossaryOriginal').value || '').trim();
+                                            var trans = (document.getElementById('newGlossaryTranslation').value || '').trim();
+                                            var translit = (document.getElementById('newGlossaryTransliteration').value || '').trim();
+                                            var meaning = (document.getElementById('newGlossaryMeaning').value || '').trim();
+                                            var isGlossary = !!(document.getElementById('newGlossaryIsGlossary') && document.getElementById('newGlossaryIsGlossary').checked);
+                                            if (!translit) { alert('Transliteration is required'); return; }
+                                            saveBtn.disabled = true;
+                                            try {
+                                                var fd = new URLSearchParams();
+                                                fd.append('word_original', orig);
+                                                fd.append('word_translation', trans);
+                                                fd.append('word_transliteration', translit);
+                                                fd.append('glossary_meaning', meaning);
+                                                fd.append('is_glossary_word', isGlossary ? '1' : '0');
+                                                var res = await fetch('<?= base_url('SongController/ajax_create_glossary_word') ?>', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                                    body: fd.toString()
+                                                });
+                                                var data = await res.json();
+                                                if (data && data.status === 'success' && data.id) {
+                                                    var opt = document.createElement('option');
+                                                    opt.value = data.id;
+                                                    opt.text = data.label || translit;
+                                                    opt.selected = true;
+                                                    sel.add(opt);
+                                                    // Real-time refresh: rebuilds Bootstrap Multiselect / Select2 + ensures new id is selected
+                                                    if (window.__adminRefreshSelect) {
+                                                        window.__adminRefreshSelect('#songglossary', String(data.id));
+                                                    } else if (window.jQuery) {
+                                                        $('#songglossary').trigger('change');
+                                                    }
+                                                    hideModal(modal);
+                                                    if (window.Swal) Swal.fire({ icon:'success', title:'Glossary word added!', timer:1200, showConfirmButton:false });
+                                                } else {
+                                                    alert('Failed: ' + (data && data.message ? data.message : 'Unknown error'));
+                                                }
+                                            } catch (e) {
+                                                alert('Error: ' + e.message);
+                                            } finally {
+                                                saveBtn.disabled = false;
+                                            }
+                                        };
+                                    }
+                                    if (document.readyState === 'loading') {
+                                        document.addEventListener('DOMContentLoaded', init);
+                                    } else {
+                                        init();
+                                    }
+                                })();
+                                </script>
                             </div>
                         </div>
 
@@ -1066,24 +1574,20 @@ include('inc/sidebar.php');
                                 
                                 <div class="form-group"> 
                                     <?php
-                                    if ($this->db->table_exists('keywords')) {
-                                        $keyword_rows = $this->db->query("SELECT id, word_transliteration FROM keywords")->result();
-                                    } elseif ($this->db->table_exists('word')) {
-                                        $keyword_rows = $this->db->query("SELECT id, word_transliteration FROM word")->result();
-                                    } elseif ($this->db->table_exists('words')) {
-                                        $keyword_rows = $this->db->query("SELECT id, word AS word_transliteration FROM words")->result();
-                                    } else {
-                                        $keyword_rows = [];
-                                    }
+                                    // Related keywords: always `word.id` (song_word / legacy CSV on song row).
+                                    $keyword_rows = $this->db->table_exists('word')
+                                        ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) ASC, id ASC")->result()
+                                        : [];
                                     ?>
                                     <label>⊙ Keywords</label>
-                                    <div class="input-btn-group d-flex align-items-center">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="relatedkeywords[]" id="relatedkeywords">
+                                    <div class="input-btn-group d-flex align-items-center" style="gap: 8px; flex: 0 0 auto;">
+                                        <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="relatedkeywords[]" id="relatedkeywords">
                                         <?php foreach ($keyword_rows as $keyword) : ?>
                                             <option value="<?= $keyword->id ?>" <?= in_array((string) $keyword->id, array_map('strval', $selected_keywords), true) ? 'selected' : '' ?>><?= htmlspecialchars($keyword->word_transliteration) ?></option>
                                         <?php endforeach; ?>
                                         </select>
-                                        <button type="button" class="btn btn-sm btn-success ml-2" id="addNewKeywordBtn" style="white-space:nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-success" id="addNewKeywordBtn" style="white-space:nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-primary ml-1" id="editKeywordBtn" style="white-space:nowrap;">Edit</button>
                                     </div>
                                 <!-- Add New Keyword Modal -->
                                 <div class="modal fade" id="addNewKeywordModal" tabindex="-1" role="dialog" aria-labelledby="addNewKeywordModalLabel" aria-hidden="true">
@@ -1096,7 +1600,18 @@ include('inc/sidebar.php');
                                                 </button>
                                             </div>
                                             <div class="modal-body">
-                                                <input type="text" class="form-control" id="addNewKeywordInput" placeholder="Enter new keyword">
+                                                <div class="form-group">
+                                                    <label>Original</label>
+                                                    <input type="text" class="form-control" id="newKeywordOriginal" placeholder="Enter Original Keyword">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Translation</label>
+                                                    <input type="text" class="form-control" id="newKeywordTranslation" placeholder="Enter Keyword Translation">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Transliteration</label>
+                                                    <input type="text" class="form-control" id="newKeywordTransliteration" placeholder="Enter Keyword Transliteration">
+                                                </div>
                                             </div>
                                             <div class="modal-footer">
                                                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
@@ -1106,16 +1621,101 @@ include('inc/sidebar.php');
                                     </div>
                                 </div>
                                 <script>
-                                // Add New Keyword Modal logic
-                                document.addEventListener('DOMContentLoaded', function() {
+                                // Add New Keyword Modal logic — delegated, runs even if elements are added/moved later
+                                (function () {
+                                function init() {
                                     var addNewKeywordBtn = document.getElementById('addNewKeywordBtn');
                                     var addNewKeywordModal = document.getElementById('addNewKeywordModal');
                                     var saveNewKeywordBtn = document.getElementById('saveNewKeywordBtn');
                                     var addNewKeywordInput = document.getElementById('addNewKeywordInput');
                                     var relatedkeywordsSelect = document.getElementById('relatedkeywords');
+                                    console.log('[kw-modal] init btn=', !!addNewKeywordBtn, 'modal=', !!addNewKeywordModal);
+                                    if (!addNewKeywordBtn || !addNewKeywordModal) {
+                                        // Try again later if DOM not ready
+                                        setTimeout(init, 200);
+                                        return;
+                                    }
+                                    // Document-level delegation as belt-and-braces — works even if button gets re-rendered
+                                    if (!document.__kwBtnDelegated) {
+                                        document.__kwBtnDelegated = true;
+                                        document.addEventListener('click', function (e) {
+                                            var t = e.target;
+                                            if (!t) return;
+                                            if (t.id === 'addNewKeywordBtn' || (t.closest && t.closest('#addNewKeywordBtn'))) {
+                                                e.preventDefault();
+                                                console.log('[kw-modal] delegated click — opening');
+                                                if (typeof __showKwModal === 'function') {
+                                                    __showKwModal();
+                                                } else {
+                                                    var m = document.getElementById('addNewKeywordModal');
+                                                    if (m) {
+                                                        m.classList.add('show');
+                                                        m.style.display = 'block';
+                                                        document.body.classList.add('modal-open');
+                                                        if (!document.getElementById('kw-modal-backdrop')) {
+                                                            var bd = document.createElement('div');
+                                                            bd.id = 'kw-modal-backdrop';
+                                                            bd.className = 'modal-backdrop fade show';
+                                                            document.body.appendChild(bd);
+                                                        }
+                                                    }
+                                                }
+                                                var inp = document.getElementById('addNewKeywordInput');
+                                                if (inp) { inp.value = ''; setTimeout(function(){ inp.focus(); }, 200); }
+                                            }
+                                        });
+                                    }
+                                    // Robust modal show/hide: try Bootstrap (jQuery or BS5 native), fallback to manual show.
+                                    function __showKwModal() {
+                                        try {
+                                            if (window.bootstrap && bootstrap.Modal) {
+                                                var inst = bootstrap.Modal.getOrCreateInstance(addNewKeywordModal);
+                                                inst.show();
+                                                return;
+                                            }
+                                            if (window.jQuery && $.fn && $.fn.modal) {
+                                                $(addNewKeywordModal).modal('show');
+                                                return;
+                                            }
+                                        } catch (e) {}
+                                        // Manual fallback
+                                        addNewKeywordModal.classList.add('show');
+                                        addNewKeywordModal.style.display = 'block';
+                                        addNewKeywordModal.removeAttribute('aria-hidden');
+                                        addNewKeywordModal.setAttribute('aria-modal', 'true');
+                                        document.body.classList.add('modal-open');
+                                        if (!document.getElementById('kw-modal-backdrop')) {
+                                            var bd = document.createElement('div');
+                                            bd.id = 'kw-modal-backdrop';
+                                            bd.className = 'modal-backdrop fade show';
+                                            document.body.appendChild(bd);
+                                        }
+                                    }
+                                    function __hideKwModal() {
+                                        try {
+                                            if (window.bootstrap && bootstrap.Modal) {
+                                                var inst = bootstrap.Modal.getInstance(addNewKeywordModal);
+                                                if (inst) { inst.hide(); return; }
+                                            }
+                                            if (window.jQuery && $.fn && $.fn.modal) {
+                                                $(addNewKeywordModal).modal('hide');
+                                                return;
+                                            }
+                                        } catch (e) {}
+                                        addNewKeywordModal.classList.remove('show');
+                                        addNewKeywordModal.style.display = 'none';
+                                        addNewKeywordModal.setAttribute('aria-hidden', 'true');
+                                        document.body.classList.remove('modal-open');
+                                        var bd = document.getElementById('kw-modal-backdrop');
+                                        if (bd) bd.remove();
+                                    }
+                                    // Hook close buttons (data-dismiss="modal" + .close-btn)
+                                    addNewKeywordModal.querySelectorAll('[data-dismiss="modal"], .close, .btn-secondary').forEach(function(btn){
+                                        btn.addEventListener('click', function(e){ e.preventDefault(); __hideKwModal(); });
+                                    });
                                     if (addNewKeywordBtn && addNewKeywordModal && saveNewKeywordBtn && addNewKeywordInput && relatedkeywordsSelect) {
                                         addNewKeywordBtn.onclick = function() {
-                                            $(addNewKeywordModal).modal('show');
+                                            __showKwModal();
                                             addNewKeywordInput.value = '';
                                             setTimeout(function() { addNewKeywordInput.focus(); }, 300);
                                         };
@@ -1140,8 +1740,13 @@ include('inc/sidebar.php');
                                                     option.text = data.word_transliteration || newKeyword;
                                                     option.selected = true;
                                                     relatedkeywordsSelect.add(option);
-                                                    if (window.jQuery && $('#relatedkeywords').length) $('#relatedkeywords').trigger('change');
-                                                    $(addNewKeywordModal).modal('hide');
+                                                    if (window.jQuery && $('#relatedkeywords').length) {
+                                                        if ($('#relatedkeywords').data('bs.multiselect') && $.fn.multiselect) {
+                                                            $('#relatedkeywords').multiselect('rebuild');
+                                                        }
+                                                        $('#relatedkeywords').trigger('change');
+                                                    }
+                                                    __hideKwModal();
                                                     addNewKeywordInput.value = '';
                                                     if (window.Swal) Swal.fire({icon:'success',title:'Success',text:'Keyword added!',timer:1200,showConfirmButton:false});
                                                 } else {
@@ -1153,7 +1758,13 @@ include('inc/sidebar.php');
                                             saveNewKeywordBtn.disabled = false;
                                         };
                                     }
-                                });
+                                }
+                                if (document.readyState === 'loading') {
+                                    document.addEventListener('DOMContentLoaded', init);
+                                } else {
+                                    init();
+                                }
+                                })();
                                 </script>
                                 </div>
                             </div>
@@ -1190,7 +1801,7 @@ include('inc/sidebar.php');
                                     ?>
                                     <label>⊙ Songs</label>
                                     <div class="input-btn-group d-flex align-items-center">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="related_songs[]" id="related_songs">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="related_songs[]" id="related_songs">
                                         <?php foreach ($song_rows as $song_row) : ?>
                                             <?php
                                             $songLabel = trim((string)$song_row->song_title_label);
@@ -1214,7 +1825,7 @@ include('inc/sidebar.php');
                                     ?>
                                     <label>⊙ Reflections</label>
                                     <div class="input-btn-group d-flex align-items-center">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="reflections[]" id="reflections">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="reflections[]" id="reflections">
                                         <?php foreach ($reflection_rows as $reflection_row) :
                                             $rid = (string) $reflection_row->id;
                                             $isSelected = in_array($rid, array_map('strval', $selected_reflections), true);
@@ -1236,7 +1847,7 @@ include('inc/sidebar.php');
                                      ?>
                                     <label>⊙ Poems</label>
                                     <div class="input-btn-group d-flex align-items-center">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="relatedpoems[]" id="relatedpoems">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="relatedpoems[]" id="relatedpoems">
                                         <?php foreach ($poem_rows as $poem_row) : ?>
                                             <option value="<?= $poem_row->id ?>" <?= in_array((string) $poem_row->id, array_map('strval', $selected_couplets), true) ? 'selected' : '' ?>><?= htmlspecialchars($poem_row->poem_label) ?></option>
                                         <?php endforeach; ?>
@@ -1253,7 +1864,7 @@ include('inc/sidebar.php');
                                      ?>
                                     <label>⊙ People</label>
                                     <div class="input-btn-group d-flex align-items-center">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="related_people[]" id="related_people">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="related_people[]" id="related_people">
                                         <?php foreach ($person_rows as $person_row) : ?>
                                             <option value="<?= $person_row->id ?>" <?= in_array((string) $person_row->id, array_map('strval', $selected_people), true) ? 'selected' : '' ?>><?= htmlspecialchars($person_row->first_name . ' ' . $person_row->middle_name . ' ' . $person_row->last_name) ?></option>
                                         <?php endforeach; ?>
@@ -1275,7 +1886,7 @@ include('inc/sidebar.php');
                                      ?>
                                     <label>⊙ Films</label>
                                     <div class="input-btn-group d-flex align-items-center">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="films[]" id="films">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="films[]" id="films">
                                         <?php foreach ($film_rows as $film_row) : ?>
                                             <option value="<?= $film_row->id ?>" <?= in_array((string) $film_row->id, array_map('strval', $selected_films), true) ? 'selected' : '' ?>><?= htmlspecialchars($film_row->film_label) ?></option>
                                         <?php endforeach; ?>
@@ -1297,7 +1908,7 @@ include('inc/sidebar.php');
                                      ?>
                                     <label>⊙ Film Episodes</label>
                                     <div class="input-btn-group d-flex align-items-center">
-                                        <select class="form-control select2 col-md-4" multiple="multiple" name="film_episodes[]" id="film_episodes">
+                                        <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="film_episodes[]" id="film_episodes">
                                         <?php foreach ($episode_rows as $episode_row) : ?>
                                             <option value="<?= $episode_row->id ?>" <?= in_array((string) $episode_row->id, array_map('strval', $selected_episodes), true) ? 'selected' : '' ?>><?= htmlspecialchars($episode_row->episode_label) ?></option>
                                         <?php endforeach; ?>
@@ -1457,8 +2068,13 @@ include('inc/sidebar.php');
                                                         option.text = data.word_transliteration || newKeyword;
                                                         option.selected = true;
                                                         relatedkeywordsSelect.add(option);
-                                                        if (window.jQuery && $('#relatedkeywords').length) $('#relatedkeywords').trigger('change');
-                                                        $(addNewKeywordModal).modal('hide');
+                                                        if (window.jQuery && $('#relatedkeywords').length) {
+                                                            if ($('#relatedkeywords').data('bs.multiselect') && $.fn.multiselect) {
+                                                                $('#relatedkeywords').multiselect('rebuild');
+                                                            }
+                                                            $('#relatedkeywords').trigger('change');
+                                                        }
+                                                        if (typeof __hideKwModal === 'function') __hideKwModal(); else $(addNewKeywordModal).modal('hide');
                                                         addNewKeywordInput.value = '';
                                                         if (window.Swal) Swal.fire({icon:'success',title:'Success',text:data.message || 'Keyword added!',timer:1200,showConfirmButton:false});
                                                     } else {
@@ -1735,8 +2351,8 @@ include('inc/sidebar.php');
                         <div class="row">
                             <div class="col-12">
                                 <div class="form-group">
-                                    <label>Publish Status <span style="color:red">*</span></label>
-                                    <select class="form-control col-md-4" name="publish" id="publish" required>
+                                    <label>Publish Status</label>
+                                    <select class="form-control col-md-4" name="publish" id="publish">
                                         <option value="false" <?= $select_publish=='false'?'selected':'' ?>>No</option>
                                         <option value="true" <?= $select_publish=='true'?'selected':'' ?>>Yes</option>
                                     </select>
@@ -1936,58 +2552,163 @@ include('inc/sidebar.php');
             }
         });
     });
-    });
     }
 
 
         // --- Umbrella Title Add/Edit/Delete Modal Logic ---
         document.addEventListener('DOMContentLoaded', function() {
             // Open Add modal
-            document.getElementById('addBtn').onclick = function() {
-                $('#addUmbrellaModal').modal('show');
-                document.getElementById('addUmbrellaInput').value = '';
-            };
-            // Open Edit modal
-            document.getElementById('editBtn').onclick = function() {
-                const select = document.getElementById('umbrellaTitle');
-                if (!select.value) {
-                    Swal.fire({icon:'warning',title:'Select a title to edit!'}); return;
+            var addBtnUmbrella = document.getElementById('addBtn');
+            if (addBtnUmbrella) {
+                addBtnUmbrella.onclick = function() {
+                    if (window.jQuery) { $('#addUmbrellaModal').modal('show'); }
+                    var t = document.getElementById('addUmbrellaTransliteration');
+                    var tr = document.getElementById('addUmbrellaTranslation');
+                    var o = document.getElementById('addUmbrellaOriginal');
+                    if (t) t.value = '';
+                    if (tr) tr.value = '';
+                    if (o) o.value = '';
+                    if (t) setTimeout(function(){ t.focus(); }, 100);
+                };
+            }
+            function getFirstUmbrellaTitleId() {
+                var $s = window.jQuery ? window.jQuery('#umbrellaTitle') : null;
+                if ($s && $s.length) {
+                    var v = $s.val();
+                    if (Array.isArray(v) && v.length) return String(v[0]);
+                    if (v) return String(v);
                 }
-                document.getElementById('editUmbrellaInput').value = select.options[select.selectedIndex].text;
-                $('#editUmbrellaModal').modal('show');
-            };
-            // Add new umbrella title (AJAX)
-            document.getElementById('saveUmbrellaBtn').onclick = async function() {
-                const input = document.getElementById('addUmbrellaInput');
-                const value = input.value.trim();
-                if (!value) { Swal.fire({icon:'warning',title:'Please enter a title!'}); return; }
+                var sel = document.getElementById('umbrellaTitle');
+                if (!sel) return '';
+                var opt = sel.options[sel.selectedIndex];
+                return opt && opt.value ? String(opt.value) : '';
+            }
+            var editBtnUmbrella = document.getElementById('editBtn');
+            if (editBtnUmbrella) {
+                editBtnUmbrella.onclick = async function() {
+                    var id = getFirstUmbrellaTitleId();
+                    if (!id || !/^\d+$/.test(id)) {
+                        Swal.fire({icon:'warning', title:'Select one umbrella title to edit'});
+                        return;
+                    }
+                    var panel = document.getElementById('umbrellaTitleEditPanel');
+                    try {
+                        var res = await fetch('<?= base_url('SongController/ajax_get_title_row') ?>', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'id=' + encodeURIComponent(id)
+                        });
+                        var data = await res.json();
+                        if (!data || !data.success) {
+                            document.getElementById('editUmbrellaInput').value = document.getElementById('umbrellaTitle').options[document.getElementById('umbrellaTitle').selectedIndex].text;
+                            if (window.jQuery) { $('#editUmbrellaModal').modal('show'); }
+                            return;
+                        }
+                        document.getElementById('umbrellaEditId').value = String(data.id);
+                        document.getElementById('umbrellaEditOriginal').value = data.original_title || '';
+                        document.getElementById('umbrellaEditTranslit').value = data.english_transliteration || '';
+                        document.getElementById('umbrellaEditTrans').value = data.english_translation || '';
+                        panel.style.display = 'block';
+                        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    } catch (e) {
+                        Swal.fire({icon:'error', title:'Error', text: e.message || String(e)});
+                    }
+                };
+            }
+            var umbCancel = document.getElementById('umbrellaEditCancelBtn');
+            if (umbCancel) {
+                umbCancel.onclick = function() {
+                    document.getElementById('umbrellaTitleEditPanel').style.display = 'none';
+                };
+            }
+            var umbSave = document.getElementById('umbrellaEditSaveBtn');
+            if (umbSave) {
+                umbSave.onclick = async function() {
+                    var id = document.getElementById('umbrellaEditId').value.trim();
+                    if (!id) return;
+                    umbSave.disabled = true;
+                    try {
+                        var body = 'id=' + encodeURIComponent(id)
+                            + '&original_title=' + encodeURIComponent(document.getElementById('umbrellaEditOriginal').value.trim())
+                            + '&english_transliteration=' + encodeURIComponent(document.getElementById('umbrellaEditTranslit').value.trim())
+                            + '&english_translation=' + encodeURIComponent(document.getElementById('umbrellaEditTrans').value.trim());
+                        var res = await fetch('<?= base_url('SongController/ajax_save_title_row') ?>', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: body
+                        });
+                        var data = await res.json();
+                        if (data && data.success) {
+                            var sel = document.getElementById('umbrellaTitle');
+                            for (var i = 0; i < sel.options.length; i++) {
+                                if (String(sel.options[i].value) === String(data.id)) {
+                                    sel.options[i].text = data.label || data.english_transliteration || data.original_title;
+                                    break;
+                                }
+                            }
+                            if (window.jQuery && window.jQuery('#umbrellaTitle').length) {
+                                window.jQuery('#umbrellaTitle').trigger('change');
+                            }
+                            document.getElementById('umbrellaTitleEditPanel').style.display = 'none';
+                            Swal.fire({icon:'success', title:'Saved'});
+                        } else {
+                            Swal.fire({icon:'error', title: (data && data.message) ? data.message : 'Save failed'});
+                        }
+                    } catch (e) {
+                        Swal.fire({icon:'error', title:'Error', text: e.message || String(e)});
+                    }
+                    umbSave.disabled = false;
+                };
+            }
+            // Add new umbrella title (AJAX) — sends transliteration, translation, original
+            var saveUmbrellaEl = document.getElementById('saveUmbrellaBtn');
+            if (saveUmbrellaEl) saveUmbrellaEl.onclick = async function() {
+                const tEl = document.getElementById('addUmbrellaTransliteration');
+                const trEl = document.getElementById('addUmbrellaTranslation');
+                const oEl = document.getElementById('addUmbrellaOriginal');
+                if (!tEl) return;
+                const translit = tEl.value.trim();
+                const translation = trEl ? trEl.value.trim() : '';
+                const original = oEl ? oEl.value.trim() : '';
+                if (!translit) { Swal.fire({icon:'warning',title:'Transliteration is required!'}); tEl.focus(); return; }
                 this.disabled = true;
                 try {
+                    const body = 'title=' + encodeURIComponent(translit)
+                        + '&english_transliteration=' + encodeURIComponent(translit)
+                        + '&english_translation=' + encodeURIComponent(translation)
+                        + '&original_title=' + encodeURIComponent(original);
                     const res = await fetch('<?= base_url('SongController/ajax_add_umbrella_title') ?>', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: 'title=' + encodeURIComponent(value)
+                        body: body
                     });
                     const data = await res.json();
                     if (data && data.success) {
                         const select = document.getElementById('umbrellaTitle');
                         const option = document.createElement('option');
-                        option.value = value;
-                        option.text = value;
+                        option.value = (data.id != null && String(data.id) !== '') ? String(data.id) : translit;
+                        option.text = data.label || translit;
                         option.selected = true;
                         select.add(option);
-                        $('#addUmbrellaModal').modal('hide');
+                        if (window.jQuery && window.jQuery('#umbrellaTitle').length) {
+                            if ($('#umbrellaTitle').data('bs.multiselect') && $.fn.multiselect) {
+                                $('#umbrellaTitle').multiselect('rebuild');
+                            }
+                            window.jQuery('#umbrellaTitle').trigger('change');
+                        }
+                        if (window.jQuery) { $('#addUmbrellaModal').modal('hide'); }
                         Swal.fire({icon:'success',title:'Added!'});
                     } else {
-                        Swal.fire({icon:'error',title:'Failed to add!'});
+                        Swal.fire({icon:'error',title:'Failed to add!', text: (data && data.message) || ''});
                     }
                 } catch(e) {
                     Swal.fire({icon:'error',title:'Error',text:e.message});
                 }
                 this.disabled = false;
             };
-            // Edit umbrella title (AJAX)
-            document.getElementById('updateUmbrellaBtn').onclick = async function() {
+            // Legacy modal save (when title table is not used)
+            var updateUmbrellaEl = document.getElementById('updateUmbrellaBtn');
+            if (updateUmbrellaEl) updateUmbrellaEl.onclick = async function() {
                 const input = document.getElementById('editUmbrellaInput');
                 const value = input.value.trim();
                 const select = document.getElementById('umbrellaTitle');
@@ -2016,19 +2737,26 @@ include('inc/sidebar.php');
                 this.disabled = false;
             };
             // Delete umbrella title (AJAX)
-            document.getElementById('deleteBtn').onclick = async function() {
+            var deleteBtnUmbrella = document.getElementById('deleteBtn');
+            if (deleteBtnUmbrella) deleteBtnUmbrella.onclick = async function() {
                 const select = document.getElementById('umbrellaTitle');
-                if (!select.value) { Swal.fire({icon:'warning',title:'Select a title to delete!'}); return; }
-                if (!(await Swal.fire({title:'Delete this title?',text:select.value,icon:'question',showCancelButton:true})).isConfirmed) return;
+                if (!select || !select.selectedOptions || !select.selectedOptions.length) {
+                    Swal.fire({icon:'warning',title:'Select a title to delete!'});
+                    return;
+                }
+                var delVal = select.selectedOptions[0].value;
+                if (!delVal) { Swal.fire({icon:'warning',title:'Select a title to delete!'}); return; }
+                if (!(await Swal.fire({title:'Delete this title?',text:delVal,icon:'question',showCancelButton:true})).isConfirmed) return;
                 try {
                     const res = await fetch('<?= base_url('SongController/ajax_delete_umbrella_title') ?>', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: 'title=' + encodeURIComponent(select.value)
+                        body: 'title=' + encodeURIComponent(delVal)
                     });
                     const data = await res.json();
                     if (data && data.success) {
-                        select.remove(select.selectedIndex);
+                        var si = select.selectedIndex;
+                        if (si >= 0) select.remove(si);
                         Swal.fire({icon:'success',title:'Deleted!'});
                     } else {
                         Swal.fire({icon:'error',title:'Failed to delete!'});
@@ -2051,7 +2779,6 @@ include('inc/sidebar.php');
                 yearSelect.appendChild(option);
             }
         }
-    });
 </script>
 <script>
             // CKEditor initialization
@@ -2062,12 +2789,12 @@ include('inc/sidebar.php');
                         'songLyricsNotes',
                         'songAbout',
                         'songnotes',
-                        'songglossary',
                         'formattedContent'
                     ];
 
                     editorIDs.forEach(function(id) {
-                        if (document.getElementById(id)) { // 🟢 check if textarea exists
+                        var el = document.getElementById(id);
+                        if (el && el.tagName === 'TEXTAREA') { // only replace textarea elements
                             CKEDITOR.replace(id, {
                                 height: 200,
                                 extraPlugins: 'colorbutton,font,justify',
@@ -2134,18 +2861,34 @@ songFormEl.addEventListener('submit', function(e) {
 
     if (isPublish) {
         const fields = [
-            { id: 'umbrellaTitle', name: 'Umbrella Title' },
             { id: 'Songtitle_transliteration', name: 'Song Title - Transliteration' },
             { id: 'songtitletraan', name: 'Song Title - Translated' },
+            { id: 'singer', name: 'Singer', multi: true },
+            { id: 'poet', name: 'Poet', multi: true },
             { id: 'year', name: 'Year' },
             { id: 'location', name: 'Location' },
             { id: 'thumbnailUrl', name: 'Thumbnail Image Upload' },
-            { id: 'thumbnailexcerpt', name: 'Thumbnail Excerpt' },
-            { id: 'publish', name: 'Publish Status' }
+            { id: 'thumbnailexcerpt', name: 'Thumbnail Excerpt' }
         ];
+        // Singer/Poet are mutually exclusive — only one needs to be filled, not both
+        const singerEl = document.getElementById('singer');
+        const poetEl = document.getElementById('poet');
+        const singerHasValue = singerEl && Array.from(singerEl.selectedOptions || []).some(o => o.value && o.value.trim() !== '');
+        const poetHasValue = poetEl && Array.from(poetEl.selectedOptions || []).some(o => o.value && o.value.trim() !== '');
+        if (!singerHasValue && !poetHasValue) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Missing Input',
+                text: 'Please select at least one Singer or Poet',
+                confirmButtonText: 'OK'
+            });
+            return false;
+        }
+
         for (let field of fields) {
+            if (field.id === 'singer' || field.id === 'poet') continue; // handled above
             let el = document.getElementById(field.id);
-            if (!el) continue; // skip if element not found
+            if (!el) continue;
             if (field.id === 'thumbnailUrl') {
                 let existing = document.getElementById('thumbnailUrl_existing');
                 if (existing && existing.value && existing.value.trim() !== '') {
@@ -2164,7 +2907,7 @@ songFormEl.addEventListener('submit', function(e) {
                     confirmButtonText: 'OK'
                 });
                 el.focus();
-                return false; // stop submission
+                return false;
             }
         }
     }
@@ -2215,20 +2958,21 @@ songFormEl.addEventListener('submit', function(e) {
     const addSingerModal = document.getElementById('addSingerModal');
     const addPoetModal = document.getElementById('addPoetModal');
     const addTranslatorModal = document.getElementById('addTranslatorModal');
-    const editBtn = document.getElementById('editBtn');
-    const addBtn = document.getElementById('addBtn');
     const addSingerBtn = document.getElementById('addSingerBtn');
     const addPoetBtn = document.getElementById('addPoetBtn');
+    const addAttributedPoetBtn = document.getElementById('addAttributedPoetBtn');
     const addTranslatorBtn = document.getElementById('addTranslatorBtn');
     const closeEdit = document.getElementById('closeEdit');
     const closeAdd = document.getElementById('closeAdd');
     const closeAddSinger = document.getElementById('closeAddSinger');
     const closeAddPoet = document.getElementById('closeAddPoet');
+    const closeAddAttributedPoet = document.getElementById('closeAddAttributedPoet');
     const closeAddTranslator = document.getElementById('closeAddTranslator');
     const cancelEdit = document.getElementById('cancelEdit');
     const cancelAdd = document.getElementById('cancelAdd');
     const cancelAddSinger = document.getElementById('cancelAddSinger');
     const cancelAddPoet = document.getElementById('cancelAddPoet');
+    const cancelAddAttributedPoet = document.getElementById('cancelAddAttributedPoet');
     const cancelAddTranslator = document.getElementById('cancelAddTranslator');
     const updateTitle = document.getElementById('updateTitle');
     const addTitle = document.getElementById('addTitle');
@@ -2237,11 +2981,13 @@ songFormEl.addEventListener('submit', function(e) {
     const addTranslator = document.getElementById('addTranslator');
     const deleteBtn = document.getElementById('deleteBtn');
     const umbrellaSelect = document.getElementById('umbrellaTitle');
+    const BASE_URL = '<?= base_url() ?>';
     const singerSelect = document.getElementById('singer');
     const poetSelect = document.getElementById('poet');
     const translatorSelect = document.getElementById('translator');
         const singerRow = document.getElementById('singerRow') || (singerSelect ? singerSelect.closest('.row') : null);
         const poetRow = document.getElementById('poetRow') || (poetSelect ? poetSelect.closest('.row') : null);
+        const attributedPoetRow = document.getElementById('attributedPoetRow') || (document.getElementById('attributed_poet') ? document.getElementById('attributed_poet').closest('.row') : null);
 
         const getSelectedValues = (selectEl) => {
             if (!selectEl) return [];
@@ -2263,53 +3009,69 @@ songFormEl.addEventListener('submit', function(e) {
             if (!selectEl) return;
             selectEl.disabled = !!disabled;
             if (window.jQuery) {
-                $(selectEl).prop('disabled', !!disabled);
-                if ($(selectEl).data('select2')) {
-                    // Forcibly close dropdown if disabling
-                    if (disabled) {
-                        $(selectEl).select2('close');
-                    }
-                    $(selectEl).trigger('change.select2');
+                var $s = $(selectEl);
+                $s.prop('disabled', !!disabled);
+                // Select2
+                if ($s.data('select2')) {
+                    if (disabled) $s.select2('close');
+                }
+                // Bootstrap Multiselect — refresh button to reflect disabled state
+                if ($s.data('bs.multiselect') && $.fn.multiselect) {
+                    $s.multiselect(disabled ? 'disable' : 'enable');
                 }
             }
         };
 
+        const attributedPoetSelect = document.getElementById('attributed_poet');
         const updateSingerPoetVisibility = (changedBy = '') => {
             // First paint / server-loaded values: don't disable fields (Select2 would look empty).
             if (changedBy === '') {
                 if (poetRow) poetRow.style.removeProperty('display');
                 if (singerRow) singerRow.style.removeProperty('display');
+                if (attributedPoetRow) attributedPoetRow.style.removeProperty('display');
                 return;
             }
 
             let singerValues = getSelectedValues(singerSelect);
             let poetValues = getSelectedValues(poetSelect);
+            let attributedPoetValues = getSelectedValues(attributedPoetSelect);
 
-            // If both are selected, clear the one that was not just changed
-            if (changedBy === 'singer' && singerValues.length > 0 && poetValues.length > 0) {
+            // If multiple fields are selected, clear the ones that were not just changed
+            if (changedBy === 'singer' && singerValues.length > 0) {
+                clearSelectValues(poetSelect);
+                poetValues = [];
+                clearSelectValues(attributedPoetSelect);
+                attributedPoetValues = [];
+            }
+            if (changedBy === 'poet' && poetValues.length > 0) {
+                clearSelectValues(singerSelect);
+                singerValues = [];
+                clearSelectValues(attributedPoetSelect);
+                attributedPoetValues = [];
+            }
+            if (changedBy === 'attributed_poet' && attributedPoetValues.length > 0) {
+                clearSelectValues(singerSelect);
+                singerValues = [];
                 clearSelectValues(poetSelect);
                 poetValues = [];
             }
-            if (changedBy === 'poet' && poetValues.length > 0 && singerValues.length > 0) {
-                clearSelectValues(singerSelect);
-                singerValues = [];
-            }
 
-            // Always show both rows
-            if (poetRow) poetRow.style.removeProperty('display');
+            // Singer is ALWAYS visible. Poet ↔ Attributed Poet are mutually exclusive (one hides the other).
             if (singerRow) singerRow.style.removeProperty('display');
+            if (poetRow) poetRow.style.removeProperty('display');
+            if (attributedPoetRow) attributedPoetRow.style.removeProperty('display');
 
-            // Enforce strict mutual exclusivity (only after user interaction)
-            if (singerValues.length > 0) {
-                setSelectDisabled(poetSelect, true);
-                setSelectDisabled(singerSelect, false);
-            } else if (poetValues.length > 0) {
-                setSelectDisabled(singerSelect, true);
-                setSelectDisabled(poetSelect, false);
-            } else {
-                setSelectDisabled(poetSelect, false);
-                setSelectDisabled(singerSelect, false);
+            // Hide whichever of (Poet / Attributed Poet) conflicts with the current selection
+            if (poetValues.length > 0) {
+                if (attributedPoetRow) attributedPoetRow.style.display = 'none';
+            } else if (attributedPoetValues.length > 0) {
+                if (poetRow) poetRow.style.display = 'none';
             }
+
+            // No disabling — all selects remain enabled (visibility alone enforces the rule)
+            setSelectDisabled(poetSelect, false);
+            setSelectDisabled(singerSelect, false);
+            setSelectDisabled(attributedPoetSelect, false);
         };
 
         window.updateSingerPoetVisibility = updateSingerPoetVisibility;
@@ -2318,19 +3080,34 @@ songFormEl.addEventListener('submit', function(e) {
     // Remove old modal open logic for Umbrella Title
     // editBtn.onclick = () => { editModal.style.display = 'block'; };
     // addBtn.onclick = () => { addModal.style.display = 'block'; };
-    addSingerBtn.onclick = () => { addSingerModal.style.display = 'block'; };
-    addPoetBtn.onclick = () => { addPoetModal.style.display = 'block'; };
-    if (addTranslatorBtn) {
-        addTranslatorBtn.onclick = () => { addTranslatorModal.style.display = 'block'; };
+    if (addSingerBtn && addSingerModal) {
+        addSingerBtn.onclick = () => { addSingerModal.style.display = 'flex'; };
     }
-    // Related Content modals
-    // document.getElementById('addKeywordBtn').onclick = () => { document.getElementById('addKeywordModal').style.display = 'block'; };
-    document.getElementById('addSongBtn').onclick = () => { document.getElementById('addSongModal').style.display = 'block'; };
-    document.getElementById('addReflectionBtn').onclick = () => { document.getElementById('addReflectionModal').style.display = 'block'; };
-    document.getElementById('addPoemBtn').onclick = () => { document.getElementById('addPoemModal').style.display = 'block'; };
-    document.getElementById('addPersonBtn').onclick = () => { document.getElementById('addPersonModal').style.display = 'block'; };
-    document.getElementById('addFilmBtn').onclick = () => { document.getElementById('addFilmModal').style.display = 'block'; };
-    document.getElementById('addEpisodeBtn').onclick = () => { document.getElementById('addEpisodeModal').style.display = 'block'; };
+    if (addPoetBtn && addPoetModal) {
+        addPoetBtn.onclick = () => { addPoetModal.style.display = 'flex'; };
+    }
+    if (addAttributedPoetBtn && document.getElementById('addAttributedPoetModal')) {
+        addAttributedPoetBtn.onclick = () => { document.getElementById('addAttributedPoetModal').style.display = 'flex'; };
+    }
+    if (addTranslatorBtn && addTranslatorModal) {
+        addTranslatorBtn.onclick = () => { addTranslatorModal.style.display = 'flex'; };
+    }
+    // Related Content modals (only bind when both trigger and modal exist in DOM)
+    function songBindOpenModal(btnId, modalId) {
+        var b = document.getElementById(btnId);
+        var m = document.getElementById(modalId);
+        if (b && m) {
+            b.onclick = function () { m.style.display = 'block'; };
+        }
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+    songBindOpenModal('addKeywordBtn', 'addKeywordModal');
+    songBindOpenModal('addSongBtn', 'addSongModal');
+    songBindOpenModal('addReflectionBtn', 'addReflectionModal');
+    songBindOpenModal('addPoemBtn', 'addPoemModal');
+    songBindOpenModal('addPersonBtn', 'addPersonModal');
+    songBindOpenModal('addFilmBtn', 'addFilmModal');
+    songBindOpenModal('addEpisodeBtn', 'addEpisodeModal');
 
     // Close modals for Related Content and Umbrella Title
     [
@@ -2345,6 +3122,7 @@ songFormEl.addEventListener('submit', function(e) {
         ['addModal', 'addTitle']
     ].forEach(([modalId, saveBtnId]) => {
         const modal = document.getElementById(modalId);
+        if (!modal) return;
         // Close on background click
         window.addEventListener('click', function(event) {
             if (event.target === modal) modal.style.display = 'none';
@@ -2561,47 +3339,58 @@ songFormEl.addEventListener('submit', function(e) {
         } catch (e) { alert('Error: ' + e.message); }
         btn.disabled = false;
     };
+    });
 
     // Close modals
     if (closeEdit) closeEdit.onclick = () => { if (editModal) editModal.style.display = 'none'; };
     if (cancelEdit) cancelEdit.onclick = () => { if (editModal) editModal.style.display = 'none'; };
     if (closeAdd) closeAdd.onclick = () => { if (addModal) addModal.style.display = 'none'; };
     if (cancelAdd) cancelAdd.onclick = () => { if (addModal) addModal.style.display = 'none'; };
-    [closeAddSinger, cancelAddSinger].forEach(btn => btn.onclick = () => addSingerModal.style.display = 'none');
-    [closeAddPoet, cancelAddPoet].forEach(btn => btn.onclick = () => addPoetModal.style.display = 'none');
-    [closeAddTranslator, cancelAddTranslator].forEach(btn => btn.onclick = () => addTranslatorModal.style.display = 'none');
+    [closeAddSinger, cancelAddSinger].forEach(btn => {
+        if (btn && addSingerModal) btn.onclick = () => { addSingerModal.style.display = 'none'; };
+    });
+    [closeAddPoet, cancelAddPoet].forEach(btn => {
+        if (btn && addPoetModal) btn.onclick = () => { addPoetModal.style.display = 'none'; };
+    });
+    [closeAddTranslator, cancelAddTranslator].forEach(btn => {
+        if (btn && addTranslatorModal) btn.onclick = () => { addTranslatorModal.style.display = 'none'; };
+    });
 
     // Outside click close
-    window.onclick = (event) => {
-      if (event.target === editModal) editModal.style.display = 'none';
-      if (event.target === addModal) addModal.style.display = 'none';
-      if (event.target === addSingerModal) addSingerModal.style.display = 'none';
-      if (event.target === addPoetModal) addPoetModal.style.display = 'none';
-      if (event.target === addTranslatorModal) addTranslatorModal.style.display = 'none';
-    };
+    window.addEventListener('click', function (event) {
+      if (editModal && event.target === editModal) editModal.style.display = 'none';
+      if (addModal && event.target === addModal) addModal.style.display = 'none';
+      if (addSingerModal && event.target === addSingerModal) addSingerModal.style.display = 'none';
+      if (addPoetModal && event.target === addPoetModal) addPoetModal.style.display = 'none';
+      if (addTranslatorModal && event.target === addTranslatorModal) addTranslatorModal.style.display = 'none';
+    });
 
-    // Update title
-    updateTitle.onclick = () => {
-      alert("✅ Umbrella title updated successfully!");
-      editModal.style.display = 'none';
-    };
+    // Update title (legacy editModal only)
+    if (updateTitle && editModal) {
+        updateTitle.onclick = () => {
+            alert("✅ Umbrella title updated successfully!");
+            editModal.style.display = 'none';
+        };
+    }
 
-    // Add new title
-    addTitle.onclick = () => {
-      const newTitle = document.getElementById('addOriginalTitle').value.trim();
-      if (newTitle) {
-        const option = document.createElement('option');
-        option.text = newTitle;
-        umbrellaSelect.add(option);
-        alert("✅ New title added successfully!");
-        addModal.style.display = 'none';
-      } else {
-        alert("⚠️ Please enter a title before adding!");
-      }
-    };
+    // Add new title (legacy addModal only)
+    if (addTitle && addModal && umbrellaSelect) {
+        addTitle.onclick = () => {
+            const newTitle = document.getElementById('addOriginalTitle').value.trim();
+            if (newTitle) {
+                const option = document.createElement('option');
+                option.text = newTitle;
+                umbrellaSelect.add(option);
+                alert("✅ New title added successfully!");
+                addModal.style.display = 'none';
+            } else {
+                alert("⚠️ Please enter a title before adding!");
+            }
+        };
+    }
 
     // Add new singer (persist to DB via AJAX)
-    const BASE_URL = '<?= base_url() ?>';
+    if (addSingerButton && addSingerModal && singerSelect) {
         addSingerButton.onclick = async () => {
             if (addSingerButton._isRunning) {
                 console.error('addSingerButton handler is already running!');
@@ -2625,12 +3414,18 @@ songFormEl.addEventListener('submit', function(e) {
                 });
                 const data = await res.json();
                 if (data && data.success) {
-                    const option = document.createElement('option');
-                    option.value = data.id;
-                    option.text = data.fullName || newSinger;
-                    option.selected = true;
-                    singerSelect.add(option);
-                    if (window.jQuery && $('#singer').length) {
+                    // Add the option to the underlying <select> if it isn't there yet
+                    if (!singerSelect.querySelector('option[value="' + String(data.id).replace(/(["\\])/g, '\\$1') + '"]')) {
+                        const option = document.createElement('option');
+                        option.value = data.id;
+                        option.text = data.fullName || newSinger;
+                        singerSelect.add(option);
+                    }
+                    // Rebuild the visible widget (Bootstrap Multiselect / Select2) AND select the new id.
+                    // Uses the shared helper which correctly detects the widget regardless of its data key.
+                    if (window.__adminRefreshSelect) {
+                        window.__adminRefreshSelect('#singer', String(data.id));
+                    } else if (window.jQuery && $('#singer').length) {
                         $('#singer').trigger('change');
                     }
                     updateSingerPoetVisibility('singer');
@@ -2671,9 +3466,10 @@ songFormEl.addEventListener('submit', function(e) {
                 addSingerButton.disabled = false;
             }
         };
+    }
 
     // Add new poet (persist to DB via AJAX)
-    addPoet.onclick = async () => {
+    if (addPoet && poetSelect && addPoetModal) addPoet.onclick = async () => {
       const btn = addPoet;
       const newPoet = document.getElementById('addPoetName').value.trim();
       const newLink = document.getElementById('addPoetLink').value.trim();
@@ -2690,14 +3486,17 @@ songFormEl.addEventListener('submit', function(e) {
         });
         const data = await res.json();
         if (data && data.success) {
-          const option = document.createElement('option');
-          option.value = data.id;
-          option.text = data.fullName || newPoet;
-          option.selected = true;
-          poetSelect.add(option);
-                    if (window.jQuery && $('#poet').length) {
-                        $('#poet').trigger('change');
-                    }
+          if (!poetSelect.querySelector('option[value="' + String(data.id).replace(/(["\\])/g, '\\$1') + '"]')) {
+            const option = document.createElement('option');
+            option.value = data.id;
+            option.text = data.fullName || newPoet;
+            poetSelect.add(option);
+          }
+          if (window.__adminRefreshSelect) {
+            window.__adminRefreshSelect('#poet', String(data.id));
+          } else if (window.jQuery && $('#poet').length) {
+            $('#poet').trigger('change');
+          }
                     updateSingerPoetVisibility('poet');
           alert("✅ New poet added and selected!");
           document.getElementById('addPoetName').value = '';
@@ -2772,11 +3571,14 @@ songFormEl.addEventListener('submit', function(e) {
             var container = document.getElementById('extraSongTranslations');
             var baseTranslator = document.getElementById('translator');
             if (!addBtn || !container || !baseTranslator) return;
+            if (addBtn.dataset.translationBound === '1') return;
+            addBtn.dataset.translationBound = '1';
 
             var extraIndex = 0;
             function buildTranslatorOptionsHtml() {
                 var html = '';
                 Array.prototype.forEach.call(baseTranslator.options, function(opt) {
+                    if (String(opt.value || '').trim() === '') return;
                     html += '<option value="' + (opt.value || '') + '">' + (opt.text || '') + '</option>';
                 });
                 return html;
@@ -2794,7 +3596,7 @@ songFormEl.addEventListener('submit', function(e) {
                 wrapper.innerHTML = ''
                     + '<div class="translation-help-text">Please deselect translators before deleting translation</div>'
                     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
-                    + '  <select class="form-control select2 col-md-4" multiple="multiple" name="extra_translator[' + extraIndex + '][]" id="' + selectId + '" data-placeholder="Select Translators">'
+                    + '  <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="extra_translator[' + extraIndex + '][]" id="' + selectId + '" data-placeholder="Select Translators" data-select2-search-placeholder="Select Translators">'
                     +        buildTranslatorOptionsHtml()
                     + '  </select>'
                     + '  <button type="button" class="btn btn-danger btn-sm remove-extra-song-translation">Delete</button>'
@@ -2803,8 +3605,8 @@ songFormEl.addEventListener('submit', function(e) {
 
                 container.appendChild(wrapper);
 
-                if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
-                    window.jQuery('#' + selectId).select2();
+                if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2 && window.__songInitSelect2El) {
+                    window.__songInitSelect2El(window.jQuery('#' + selectId));
                 }
                 if (typeof CKEDITOR !== 'undefined') {
                     CKEDITOR.replace(textareaId, {
@@ -2857,58 +3659,166 @@ songFormEl.addEventListener('submit', function(e) {
         }
         updateSingerPoetVisibility();
 
-        // Delete selected title
-    // Umbrella Title delete with AJAX
-    deleteUmbrellaBtn.onclick = async () => {
-        const select = document.getElementById('umbrellaTitle');
-        if (!select || !select.selectedOptions.length) {
-            Swal.fire({icon:'warning',title:'Select a title to delete!'}); return;
-        }
-        const val = select.selectedOptions[0].value;
-        if (!val) { Swal.fire({icon:'warning',title:'Invalid selection!'}); return; }
-        if (!(await Swal.fire({title:'Delete this title?',text:val,icon:'question',showCancelButton:true})).isConfirmed) return;
-        // AJAX delete
-        try {
-            const res = await fetch('<?= base_url('SongController/ajax_delete_umbrella_title') ?>', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'title=' + encodeURIComponent(val)
-            });
-            const data = await res.json();
-            if (data && data.success) {
-                // Remove from select
-                for (let opt of Array.from(select.options)) {
-                    if (opt.value === val) select.removeChild(opt);
-                }
-                Swal.fire({icon:'success',title:'Deleted!'});
-            } else {
-                Swal.fire({icon:'error',title:'Failed',text:data && data.message ? data.message : 'Delete failed'});
-            }
-        } catch(e) {
-            Swal.fire({icon:'error',title:'Error',text:e.message});
-        }
-    };
+        // Umbrella delete is bound in the earlier DOMContentLoaded block (deleteBtn).
   </script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     if (window.jQuery && $.fn && $.fn.select2) {
-        $('.select2').select2({
-            placeholder: "Select options",
-            allowClear: true
+        // Per-field placeholder (multi-select breaks if a dummy value="" option is used with a global placeholder).
+        window.__songInitSelect2El = function ($el) {
+            $el = window.jQuery($el);
+            if (!$el.length) return;
+            var isMultiple = $el.prop('multiple');
+            var ph = $el.attr('data-placeholder') || 'Select options';
+
+            // Multi-select fields → Bootstrap Multiselect (None selected button + Select All + Search UI)
+            if (isMultiple && window.jQuery.fn && window.jQuery.fn.multiselect) {
+                // Pehle agar Select2 init ho chuka hai to use destroy karte hain
+                if ($el.data('select2')) {
+                    try { $el.select2('destroy'); } catch(e) {}
+                }
+                if ($el.data('bs.multiselect') || $el.next('.btn-group').find('.multiselect').length) return;
+                $el.multiselect({
+                    nonSelectedText: ph,
+                    nSelectedText: ' selected',
+                    allSelectedText: 'All selected',
+                    enableFiltering: false,
+                    includeSelectAllOption: false,
+                    buttonWidth: '100%',
+                    maxHeight: 380,
+                    numberDisplayed: 5,
+                    buttonContainer: '<div class="btn-group" style="width:100%;" />',
+                    templates: {
+                        button: '<button type="button" class="multiselect dropdown-toggle" data-toggle="dropdown" style="display:block;position:relative;width:200px;max-width:200px;min-height:38px;max-height:220px;overflow-y:auto;overflow-x:hidden;text-align:center;cursor:pointer;border:1px solid #c6c6c6;padding:6px 24px 6px 10px;font-size:14px;border-radius:4px;color:#555;white-space:normal;word-wrap:break-word;word-break:break-word;background-color:#fff;background-image:linear-gradient(#fff,#f7f7f7);box-shadow:none;box-sizing:border-box;line-height:1.5;"><span class="multiselect-selected-text" style="display:block;white-space:normal;word-wrap:break-word;line-height:1.5;width:100%;text-align:center;"></span><b class="caret" style="position:absolute;right:8px;top:16px;display:inline-block;width:0;height:0;border-top:4px solid #333;border-right:4px solid transparent;border-left:4px solid transparent;"></b></button>'
+                    },
+                    buttonText: function(options, select) {
+                        if (options.length === 0) return ph;
+                        var labels = [];
+                        options.each(function() { labels.push($(this).text().trim()); });
+                        return labels.join(', ');
+                    },
+                    onChange: function(option, checked) { $el.trigger('change'); },
+                    onSelectAll: function() { $el.trigger('change'); },
+                    onDeselectAll: function() { $el.trigger('change'); },
+                    onDropdownShown: function(event) {
+                        var $dropdown = $el.next('.btn-group').find('.multiselect-container.dropdown-menu');
+                        if (!$dropdown.length || $dropdown.find('.ms-helper-container').length) return;
+
+                        $el.data('ms-initial-vals', $el.val() ? $el.val().slice() : []);
+
+                        // Helper container = action row (Select All/None/Reset) + search input
+                        var $helper = $('<li class="ms-helper-container"></li>');
+                        var $row = $('<div class="ms-action-row"></div>');
+                        var $all = $('<button type="button" class="ms-action-btn">Select All</button>');
+                        var $none = $('<button type="button" class="ms-action-btn">Select None</button>');
+                        var $reset = $('<button type="button" class="ms-action-btn">Reset</button>');
+                        $all.on('click', function(e) {
+                            e.preventDefault(); e.stopPropagation();
+                            $el.multiselect('selectAll', false);
+                            $el.multiselect('updateButtonText');
+                            $el.trigger('change');
+                        });
+                        $none.on('click', function(e) {
+                            e.preventDefault(); e.stopPropagation();
+                            $el.multiselect('deselectAll', false);
+                            $el.multiselect('updateButtonText');
+                            $el.trigger('change');
+                        });
+                        $reset.on('click', function(e) {
+                            e.preventDefault(); e.stopPropagation();
+                            var initial = $el.data('ms-initial-vals') || [];
+                            $el.multiselect('deselectAll', false);
+                            if (initial.length) $el.multiselect('select', initial, false);
+                            $el.multiselect('updateButtonText');
+                            $el.trigger('change');
+                        });
+                        $row.append($all).append($none).append($reset);
+                        $helper.append($row);
+
+                        var $search = $('<input type="text" class="ms-search-input" placeholder="Search..." />');
+                        $search.on('click', function(e) { e.stopPropagation(); });
+                        $search.on('keydown', function(e) { e.stopPropagation(); });
+                        $search.on('input', function() {
+                            var q = $(this).val().toLowerCase();
+                            $dropdown.find('li').not('.ms-helper-container').each(function() {
+                                var txt = $(this).text().toLowerCase();
+                                $(this).toggle(txt.indexOf(q) !== -1);
+                            });
+                        });
+                        $helper.append($search);
+
+                        $dropdown.prepend($helper);
+                    }
+                });
+                return;
+            }
+
+            // Single-select → Select2 (jaisa pehle tha)
+            if ($el.data('select2')) return;
+            var searchPh = $el.attr('data-select2-search-placeholder') || ph;
+            var hasEmptyOption = $el.find('option[value=""]').length > 0;
+            var opts = { placeholder: ph };
+            if (!isMultiple || hasEmptyOption) {
+                opts.allowClear = true;
+            }
+            $el.select2(opts);
+            $el.on('select2:open.songph', function () {
+                setTimeout(function () {
+                    var $f = window.jQuery('.select2-container--open .select2-search__field');
+                    if ($f.length) $f.attr('placeholder', searchPh);
+                }, 10);
+            });
+        };
+        window.jQuery('.select2').each(function () {
+            window.__songInitSelect2El(window.jQuery(this));
         });
+
+        // Singer/Poet ka explicit init — multiple retries kyunki kabhi-kabhi init time pe DOM ready nahi hota
+        var ensureSingerPoetSelect2 = function () {
+            if (!(window.jQuery && window.jQuery.fn && window.jQuery.fn.select2)) return false;
+            var allDone = true;
+            ['#singer', '#poet'].forEach(function (sel) {
+                var $s = window.jQuery(sel);
+                if (!$s.length) return;
+                if ($s.data('select2')) return;
+                if (!$s.attr('data-placeholder')) {
+                    $s.attr('data-placeholder', sel === '#singer' ? 'Select Singer' : 'Select Poet');
+                }
+                try {
+                    window.__songInitSelect2El($s);
+                } catch (e) {
+                    console.warn('Select2 init retry needed for', sel, e);
+                }
+                if (!$s.data('select2')) allDone = false;
+            });
+            return allDone;
+        };
+        ensureSingerPoetSelect2();
+        // Retry on window load (after all assets) — in case jQuery/select2 ka order race tha
+        window.addEventListener('load', function () {
+            ensureSingerPoetSelect2();
+        });
+        // Final safety: 500ms baad ek aur try
+        setTimeout(ensureSingerPoetSelect2, 500);
     }
 
     var __selSingers = <?= json_encode(isset($selected_singers) ? $selected_singers : []) ?>;
     var __selPoets = <?= json_encode(isset($selected_poet) ? $selected_poet : []) ?>;
     if (window.jQuery && $('#singer').length && __selSingers.length) {
         window.__suppressSingerPoetSync = true;
-        $('#singer').val(__selSingers);
+        $('#singer').val(__selSingers.map(String));
+        if ($('#singer').data('bs.multiselect') && $.fn.multiselect) {
+            $('#singer').multiselect('refresh');
+        }
         window.__suppressSingerPoetSync = false;
     }
     if (window.jQuery && $('#poet').length && __selPoets.length) {
         window.__suppressSingerPoetSync = true;
-        $('#poet').val(__selPoets);
+        $('#poet').val(__selPoets.map(String));
+        if ($('#poet').data('bs.multiselect') && $.fn.multiselect) {
+            $('#poet').multiselect('refresh');
+        }
         window.__suppressSingerPoetSync = false;
     }
 
@@ -2921,7 +3831,13 @@ document.addEventListener('DOMContentLoaded', function() {
     var __selEpisodes = <?= json_encode(isset($selected_episodes) ? $selected_episodes : []) ?>;
     function __applySongMulti(sel, vals) {
         if (!window.jQuery || !$(sel).length || !vals || !vals.length) return;
-        $(sel).val(vals.map(String)).trigger('change');
+        var $el = $(sel);
+        $el.val(vals.map(String));
+        if ($el.data('bs.multiselect') && $.fn.multiselect) {
+            $el.multiselect('refresh');
+        } else {
+            $el.trigger('change');
+        }
     }
     __applySongMulti('#relatedkeywords', __selKeywords);
     __applySongMulti('#related_songs', __selRelatedSongs);
@@ -2955,6 +3871,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function buildTranslatorOptionsHtml() {
         var html = '';
         Array.prototype.forEach.call(baseTranslator.options, function (opt) {
+            if (String(opt.value || '').trim() === '') return;
             html += '<option value="' + (opt.value || '') + '">' + (opt.text || '') + '</option>';
         });
         return html;
@@ -2972,7 +3889,7 @@ document.addEventListener('DOMContentLoaded', function () {
         wrapper.innerHTML = ''
             + '<div class="translation-help-text">Please deselect translators before deleting translation</div>'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
-            + '  <select class="form-control select2 col-md-4" multiple="multiple" name="extra_translator_fb[' + extraIndex + '][]" id="' + selectId + '" data-placeholder="Select Translators">'
+            + '  <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="extra_translator_fb[' + extraIndex + '][]" id="' + selectId + '" data-placeholder="Select Translators" data-select2-search-placeholder="Select Translators">'
             +        buildTranslatorOptionsHtml()
             + '  </select>'
             + '  <button type="button" class="btn btn-danger btn-sm remove-extra-song-translation-fb">Delete</button>'
@@ -2981,8 +3898,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         container.appendChild(wrapper);
 
-        if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
-            window.jQuery('#' + selectId).select2();
+        if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2 && window.__songInitSelect2El) {
+            window.__songInitSelect2El(window.jQuery('#' + selectId));
         }
         if (typeof CKEDITOR !== 'undefined') {
             CKEDITOR.replace(textareaId, {
@@ -3128,7 +4045,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </div>
 
 <script>
-// Move all .modal elements to <body> to ensure Bootstrap modal stacking works (same as Related Content popups)
+// Move Bootstrap .modal elements to <body> (do not move custom .song-person-dialog)
 document.addEventListener('DOMContentLoaded', function() {
     var modals = document.querySelectorAll('.modal');
     modals.forEach(function(modal) {
@@ -3136,6 +4053,77 @@ document.addEventListener('DOMContentLoaded', function() {
             document.body.appendChild(modal);
         }
     });
+    document.querySelectorAll('.song-person-dialog').forEach(function(el) {
+        if (el.parentNode !== document.body) {
+            document.body.appendChild(el);
+        }
+    });
 });
+</script>
+<script>
+// Edit-selected wiring (admin-wide __adminEditOption helper from footer.php)
+(function () {
+  function bindEdit(btnId, opts) {
+    var b = document.getElementById(btnId);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      if (window.__adminEditOption) window.__adminEditOption(opts);
+      else alert('Edit helper not loaded');
+    });
+  }
+  var BASE = '<?php echo base_url(); ?>';
+  bindEdit('editSingerBtn', {
+    selectId: '#singer', modalId: '#addSingerModal', addSaveBtnId: '#addSinger',
+    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Singer',
+    extraPayload: { type_id: 1 },
+    fields: [
+      { inputId: '#addSingerName', postKey: 'name',      primary: true },
+      { inputId: '#addSingerLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+    ]
+  });
+  bindEdit('editPoetBtn', {
+    selectId: '#poet', modalId: '#addPoetModal', addSaveBtnId: '#addPoet',
+    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Poet',
+    extraPayload: { type_id: 2 },
+    fields: [
+      { inputId: '#addPoetName', postKey: 'name',      primary: true },
+      { inputId: '#addPoetLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+    ]
+  });
+  bindEdit('editAttributedPoetBtn', {
+    selectId: '#attributed_poet', modalId: '#addAttributedPoetModal', addSaveBtnId: '#addAttributedPoet',
+    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Attributed Poet',
+    extraPayload: { type_id: 2 },
+    fields: [
+      { inputId: '#addAttributedPoetName', postKey: 'name',      primary: true },
+      { inputId: '#addAttributedPoetLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+    ]
+  });
+  bindEdit('editTranslatorBtn', {
+    selectId: '#translator', modalId: '#addTranslatorModal', addSaveBtnId: '#addTranslator',
+    updateUrl: BASE + 'song/ajax_update_translator', editTitle: 'Edit Translator',
+    fields: [
+      { inputId: '#addTranslatorName', postKey: 'name',      primary: true },
+      { inputId: '#addTranslatorLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+    ]
+  });
+  bindEdit('editGlossaryWordBtn', {
+    selectId: '#songglossary', modalId: '#addGlossaryWordModal', addSaveBtnId: '#saveGlossaryWordBtn',
+    updateUrl: BASE + 'song/ajax_update_glossary_word', editTitle: 'Edit Glossary Word',
+    fields: [
+      { inputId: '#newGlossaryOriginal',        postKey: 'word_original' },
+      { inputId: '#newGlossaryTranslation',     postKey: 'word_translation' },
+      { inputId: '#newGlossaryTransliteration', postKey: 'word_transliteration', primary: true },
+      { inputId: '#newGlossaryMeaning',         postKey: 'glossary_meaning' }
+    ]
+  });
+  bindEdit('editKeywordBtn', {
+    selectId: '#relatedkeywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#saveNewKeywordBtn',
+    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
+    fields: [
+      { inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }
+    ]
+  });
+})();
 </script>
 <?php include('inc/footer.php'); ?>

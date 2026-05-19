@@ -1,0 +1,43 @@
+[2026-05-07 14:14:18] film update id=40
+POST keys: main_title,second_title,film_language,film_language_youtube_link,series_title,series_description,directors,thumbnail_Image,thumbnail_excerpt,about,duration,year,related_keywords,related_songs,related_poems,related_reflections,related_people,meta_title,meta_keywords,meta_description,publish
+POST[related_keywords]=array (
+  0 => '264',
+)
+POST[related_songs]=array (
+  0 => '231',
+)
+POST[related_poems]=array (
+  0 => '305',
+)
+POST[related_reflections]=array (
+  0 => '100',
+)
+POST[related_people]=array (
+  0 => '203',
+)
+POST[directors]=array (
+  0 => '94',
+)
+---
+[2026-05-07 14:16:40] film update id=40
+POST keys: main_title,second_title,film_language,film_language_youtube_link,series_title,series_description,directors,thumbnail_Image,thumbnail_excerpt,about,duration,year,related_keywords,related_songs,related_poems,related_reflections,related_people,meta_title,meta_keywords,meta_description,publish
+POST[related_keywords]=array (
+  0 => '280',
+  1 => '132',
+)
+POST[related_songs]=array (
+  0 => '231',
+)
+POST[related_poems]=array (
+  0 => '305',
+)
+POST[related_reflections]=array (
+  0 => '100',
+)
+POST[related_people]=array (
+  0 => '203',
+)
+POST[directors]=array (
+  0 => '94',
+)
+---

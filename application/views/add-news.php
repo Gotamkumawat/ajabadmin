@@ -364,10 +364,11 @@ $news = $edit_mode ? $news : array(
                                 <div style="flex: 1;">
                                     <select name="item_1_category" class="form-control category-select col-md-4" data-target="1">
                                         <option value="">Select Category</option>
-                                        <option value="single" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'single') ? 'selected' : ''; ?>>Single (Image)</option>
-                                        <option value="multiple" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'multiple') ? 'selected' : ''; ?>>Multiple (Image)</option>
-                                        <option value="video" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'video') ? 'selected' : ''; ?>>Video</option>
-                                        <option value="text" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'text') ? 'selected' : ''; ?>>Text Only</option>
+                                        <option value="single_small" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'single_small') ? 'selected' : ''; ?>>SINGLE IMAGE (SMALL)</option>
+                                        <option value="single_large" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'single_large') ? 'selected' : ''; ?>>SINGLE IMAGE (LARGE)</option>
+                                        <option value="multi_carousel" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'multi_carousel') ? 'selected' : ''; ?>>MULTI IMAGE CAROUSEL</option>
+                                        <option value="video" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'video') ? 'selected' : ''; ?>>VIDEO</option>
+                                        <option value="text" <?php echo (isset($popup_items[0]['category']) && $popup_items[0]['category'] === 'text') ? 'selected' : ''; ?>>TEXT ONLY</option>
                                     </select>
                                 </div>
                             </div>
@@ -428,7 +429,7 @@ $news = $edit_mode ? $news : array(
                             <div class="form-row" style="display: flex; align-items: center; margin-bottom: 18px;">
                                 <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">News Content</div>
                                 <div style="flex: 1;">
-                                     <textarea name="item_1_content" class="form-control col-md-8" rows="9" style="width:100%;"><?php echo isset($popup_items[0]['content']) ? htmlspecialchars($popup_items[0]['content']) : ''; ?></textarea>
+                                     <textarea name="item_1_content" id="item_1_content" class="form-control col-md-8" rows="9" style="width:100%;"><?php echo isset($popup_items[0]['content']) ? htmlspecialchars($popup_items[0]['content']) : ''; ?></textarea>
                                 </div>
                             </div>
                             <div class="form-row" style="display: flex; align-items: center; margin-bottom: 18px;">
@@ -573,12 +574,51 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+<script src="https://cdn.ckeditor.com/4.22.1/standard-all/ckeditor.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-// Form submit (optional validation can be re-added later)
-document.querySelector('form[name="newsForm"]').addEventListener('submit', function() {
-    // basic submit; add validation as needed
+function initNewsContentEditor() {
+    var textarea = document.getElementById('item_1_content');
+    if (!textarea || typeof CKEDITOR === 'undefined') {
+        return false;
+    }
+    if (CKEDITOR.instances && CKEDITOR.instances.item_1_content) {
+        return true;
+    }
+    CKEDITOR.replace('item_1_content', {
+        height: 280,
+        extraPlugins: 'colorbutton,font,justify',
+        toolbar: [
+            { name: 'document', items: ['Source', '-', 'Preview'] },
+            { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat'] },
+            { name: 'paragraph', items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'] },
+            { name: 'insert', items: ['Image', 'Table', 'HorizontalRule', 'SpecialChar'] },
+            { name: 'styles', items: ['Styles', 'Format', 'Font', 'FontSize'] },
+            { name: 'colors', items: ['TextColor', 'BGColor'] }
+        ]
+    });
+    return true;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!initNewsContentEditor()) {
+        // Retry once after full page scripts load.
+        setTimeout(initNewsContentEditor, 400);
+    }
 });
+
+window.addEventListener('load', function () {
+    initNewsContentEditor();
+});
+
+var newsForm = document.querySelector('form[name="newsForm"]');
+if (newsForm) {
+    newsForm.addEventListener('submit', function () {
+        if (typeof CKEDITOR !== 'undefined' && CKEDITOR.instances && CKEDITOR.instances.item_1_content) {
+            CKEDITOR.instances.item_1_content.updateElement();
+        }
+    });
+}
 </script>
 <?php 
 include('inc/footer.php');

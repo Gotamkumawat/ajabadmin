@@ -25,9 +25,10 @@ class ReflectionController extends CI_Controller {
         $thumbnail_url = '';
         if (!empty($_FILES['thumbnail_url']['name'])) {
             $config['upload_path'] = FCPATH . 'uploads/thumbnails/';
-            $config['allowed_types'] = 'jpg|jpeg|png|gif';
+            if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
+            $config['allowed_types'] = 'jpg|jpeg|png|gif|webp|avif';
             $config['max_size'] = 2048;
-            $config['file_name'] = time() . '_' . $_FILES['thumbnail_url']['name'];
+            $config['file_name'] = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnail_url']['name']);
             $this->load->library('upload');
             $this->upload->initialize($config);
             if ($this->upload->do_upload('thumbnail_url')) {
@@ -66,8 +67,11 @@ class ReflectionController extends CI_Controller {
             'text_editor_content' => $this->input->post('text_editor_content'),
             'moduler_editor_content' => $this->input->post('moduler_editor_content'),
             'thumbnail_url' => $thumbnail_url,
+            // Thumbnail Excerpt UI maps to reflection_excerpt column (canonical); also store in thumbnail_excerpt for legacy reads.
             'thumbnail_excerpt' => $this->input->post('thumbnail_excerpt'),
-            'reflection_excerpt' => $this->input->post('reflection_excerpt'),
+            'reflection_excerpt' => $this->input->post('thumbnail_excerpt') !== null && trim((string)$this->input->post('thumbnail_excerpt')) !== ''
+                ? $this->input->post('thumbnail_excerpt')
+                : $this->input->post('reflection_excerpt'),
             'reflection_type' => is_array($this->input->post('reflection_type')) ? implode(',', $this->input->post('reflection_type')) : ($this->input->post('reflection_type') ?? ''),
             'youtube_video_id' => $this->input->post('interview_video') !== null && $this->input->post('interview_video') !== '' ? $this->input->post('interview_video') : $this->input->post('youtube_video_id'),
             'duration' => $this->input->post('duration'),
@@ -96,12 +100,66 @@ class ReflectionController extends CI_Controller {
         $insert = $this->ReflectionModel->insert_reflection($this->filter_reflection_columns($data));
 
         if ($insert) {
+            $newId = (int) $this->db->insert_id();
+            $this->sync_word_reflection_junction($newId, $this->input->post('related_keywords'));
+            $this->sync_reflection_related_all($newId);
             $this->session->set_flashdata('success', 'Reflection saved successfully!');
         } else {
             $this->session->set_flashdata('error', 'Failed to save reflection: ' . $this->db->_error_message());
         }
 
         redirect('add-reflection');
+    }
+
+    /**
+     * Mirror keyword selections into word_reflection junction (word_id, reflection_id).
+     */
+    private function sync_word_reflection_junction($reflectionId, $keywords) {
+        if (!$this->db->table_exists('word_reflection')) return;
+        $reflectionId = (int) $reflectionId;
+        if ($reflectionId <= 0) return;
+        $ids = [];
+        if (is_array($keywords)) {
+            foreach ($keywords as $k) { $k = (int) $k; if ($k > 0) { $ids[$k] = true; } }
+        } elseif ($keywords !== null && trim((string)$keywords) !== '') {
+            foreach (explode(',', (string)$keywords) as $k) { $k = (int) trim($k); if ($k > 0) { $ids[$k] = true; } }
+        }
+        $this->db->where('reflection_id', $reflectionId)->delete('word_reflection');
+        foreach (array_keys($ids) as $wid) {
+            $this->db->insert('word_reflection', [
+                'word_id'       => $wid,
+                'reflection_id' => $reflectionId,
+            ]);
+        }
+    }
+
+    /**
+     * Generic helper: replace junction rows for a reflection with given IDs.
+     */
+    private function sync_reflection_junction($table, $fkCol, $reflectionId, $ids) {
+        if (!$this->db->table_exists($table)) return;
+        $reflectionId = (int) $reflectionId;
+        if ($reflectionId <= 0) return;
+        $clean = [];
+        if (is_array($ids)) {
+            foreach ($ids as $v) { $v = (int) $v; if ($v > 0) { $clean[$v] = true; } }
+        } elseif ($ids !== null && trim((string)$ids) !== '') {
+            foreach (explode(',', (string)$ids) as $v) { $v = (int) trim($v); if ($v > 0) { $clean[$v] = true; } }
+        }
+        $this->db->where('reflection_id', $reflectionId)->delete($table);
+        foreach (array_keys($clean) as $vid) {
+            $this->db->insert($table, ['reflection_id' => $reflectionId, $fkCol => $vid]);
+        }
+    }
+
+    /**
+     * Sync ALL related-content junction tables from posted form fields.
+     */
+    private function sync_reflection_related_all($reflectionId) {
+        $this->sync_reflection_junction('reflection_song',        'song_id',         $reflectionId, $this->input->post('related_songs'));
+        $this->sync_reflection_junction('reflection_couplet',     'couplet_id',      $reflectionId, $this->input->post('related_poems'));
+        $this->sync_reflection_junction('reflection_person',      'person_id',       $reflectionId, $this->input->post('related_people'));
+        $this->sync_reflection_junction('reflection_filmepisode', 'film_episode_id', $reflectionId, $this->input->post('related_episodes'));
     }
 
     public function edit($id) {
@@ -119,9 +177,10 @@ class ReflectionController extends CI_Controller {
         $thumbnail_url = trim((string) $this->input->post('thumbnail_url_existing'));
         if (!empty($_FILES['thumbnail_url']['name'])) {
             $config['upload_path'] = FCPATH . 'uploads/thumbnails/';
-            $config['allowed_types'] = 'jpg|jpeg|png|gif|webp';
+            if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
+            $config['allowed_types'] = 'jpg|jpeg|png|gif|webp|avif';
             $config['max_size'] = 2048;
-            $config['file_name'] = time() . '_' . $_FILES['thumbnail_url']['name'];
+            $config['file_name'] = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['thumbnail_url']['name']);
             $this->upload->initialize($config);
             if ($this->upload->do_upload('thumbnail_url')) {
                 $uploadData = $this->upload->data();
@@ -184,6 +243,9 @@ class ReflectionController extends CI_Controller {
         );
 
         $update = $this->ReflectionModel->update_reflection($id, $this->filter_reflection_columns($data));
+        // Always sync junctions (independent of update success — same fields might mean no row change but new selections)
+        $this->sync_word_reflection_junction((int) $id, $this->input->post('related_keywords'));
+        $this->sync_reflection_related_all((int) $id);
 
         if ($update) {
             $this->session->set_flashdata('success', 'Reflection updated successfully!');

@@ -2,26 +2,93 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class SongController extends CI_Controller {
-        // AJAX: Add new umbrella title
+        // AJAX: Add new umbrella title (normalized `title` table when present)
         public function ajax_add_umbrella_title() {
             $this->output->set_content_type('application/json');
-            $title = trim($this->input->post('title'));
-            if ($title === '') {
-                echo json_encode(['success' => false, 'message' => 'Title required']);
+            // Accept either combined (legacy `title`) or split fields
+            $translit = trim((string) $this->input->post('english_transliteration'));
+            $translation = trim((string) $this->input->post('english_translation'));
+            $original = trim((string) $this->input->post('original_title'));
+            $legacyTitle = trim((string) $this->input->post('title'));
+            if ($translit === '' && $legacyTitle !== '') { $translit = $legacyTitle; }
+            if ($translit === '') {
+                echo json_encode(['success' => false, 'message' => 'Transliteration required']);
                 return;
             }
-            // Check if already exists
+            if ($original === '') { $original = $translit; }
+            $label = $translit;
+            if ($this->db->table_exists('title')) {
+                $dup = $this->db->where('english_transliteration', $translit)->get('title')->row_array();
+                if (!empty($dup)) {
+                    echo json_encode(['success' => true, 'id' => (int) $dup['id'], 'label' => $label]);
+                    return;
+                }
+                $this->db->insert('title', [
+                    'original_title' => $original,
+                    'english_transliteration' => $translit,
+                    'english_translation' => $translation,
+                ]);
+                $id = (int) $this->db->insert_id();
+                echo json_encode(['success' => true, 'id' => $id, 'label' => $label]);
+                return;
+            }
             $table = $this->SongModel->song_table_name();
-            $exists = $this->db->where('Songtitle_transliteration', $title)->get($table)->row_array();
+            $exists = $this->db->where('Songtitle_transliteration', $translit)->get($table)->row_array();
             if ($exists) {
                 echo json_encode(['success' => false, 'message' => 'Title already exists']);
                 return;
             }
-            $this->db->insert($table, ['Songtitle_transliteration' => $title]);
-            echo json_encode(['success' => true]);
+            $this->db->insert($table, ['Songtitle_transliteration' => $translit]);
+            echo json_encode(['success' => true, 'id' => (int) $this->db->insert_id(), 'label' => $label]);
         }
 
-        // AJAX: Update umbrella title (all songs with old_title)
+        /** AJAX: Load one `title` row for umbrella inline editor */
+        public function ajax_get_title_row() {
+            $this->output->set_content_type('application/json');
+            $id = (int) $this->input->post('id');
+            if ($id <= 0 || !$this->db->table_exists('title')) {
+                echo json_encode(['success' => false, 'message' => 'Invalid id']);
+                return;
+            }
+            $row = $this->db->get_where('title', ['id' => $id])->row_array();
+            if (empty($row)) {
+                echo json_encode(['success' => false, 'message' => 'Not found']);
+                return;
+            }
+            echo json_encode([
+                'success' => true,
+                'id' => (int) $row['id'],
+                'original_title' => (string) ($row['original_title'] ?? ''),
+                'english_transliteration' => (string) ($row['english_transliteration'] ?? ''),
+                'english_translation' => (string) ($row['english_translation'] ?? ''),
+            ]);
+        }
+
+        /** AJAX: Save umbrella fields on `title` row */
+        public function ajax_save_title_row() {
+            $this->output->set_content_type('application/json');
+            $id = (int) $this->input->post('id');
+            if ($id <= 0 || !$this->db->table_exists('title')) {
+                echo json_encode(['success' => false, 'message' => 'Invalid id']);
+                return;
+            }
+            $orig = trim((string) $this->input->post('original_title'));
+            $translit = trim((string) $this->input->post('english_transliteration'));
+            $trans = trim((string) $this->input->post('english_translation'));
+            if ($translit === '') {
+                echo json_encode(['success' => false, 'message' => 'Transliteration is required']);
+                return;
+            }
+            $this->db->where('id', $id)->update('title', [
+                'original_title' => $orig,
+                'english_transliteration' => $translit,
+                'english_translation' => $trans,
+            ]);
+            $label = $translit !== '' ? $translit : $orig;
+            echo json_encode(['success' => true, 'id' => $id, 'label' => $label]);
+        }
+
+        // AJAX: Update umbrella title (legacy: songs.Songtitle_transliteration by old text)
         public function ajax_update_umbrella_title() {
             $this->output->set_content_type('application/json');
             $old = trim($this->input->post('old_title'));
@@ -34,7 +101,7 @@ class SongController extends CI_Controller {
             echo json_encode(['success' => true]);
         }
 
-        // AJAX: Delete umbrella title (delete all songs with that title)
+        // AJAX: Delete umbrella title (legacy)
         public function ajax_delete_umbrella_title() {
             $this->output->set_content_type('application/json');
             $title = trim($this->input->post('title'));
@@ -148,6 +215,7 @@ class SongController extends CI_Controller {
         $this->load->database(); // Database connect
         $this->load->helper('url'); 
         $this->load->model('SongModel'); // Model load
+        $this->load->model('WordModel');
         $this->load->library('session');
         $this->load->library('upload'); // Add upload library
 		if (!$this->session->userdata('logged_in')) {
@@ -236,6 +304,7 @@ class SongController extends CI_Controller {
         
         $songTitleOriginal = $this->input->post('songTitleOriginal');
         $poet = $this->input->post('poet');
+        $attributed_poet = $this->input->post('attributed_poet');
         $year = $this->input->post('year');
         $relatedkeywords = $this->input->post('relatedkeywords');
         $relatedpoems = $this->input->post('relatedpoems');
@@ -251,6 +320,7 @@ class SongController extends CI_Controller {
         $thumbnailUrl = '';
         if (!empty($_FILES['thumbnailUrl']['name'])) {
             $config['upload_path'] = FCPATH . 'uploads/thumbnails/'; // Folder path
+            if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
             $config['allowed_types'] = 'jpg|jpeg|png|gif';
             $config['max_size'] = 2048; // 2MB
             $config['file_name'] = time() . '_' . $_FILES['thumbnailUrl']['name'];
@@ -272,6 +342,25 @@ class SongController extends CI_Controller {
                 $thumbnailUrl = $this->input->post('thumbnailUrl');
             }
         }
+
+        $interviewAudioPathSave = trim((string) $this->input->post('interview_audio_existing'));
+        if (!empty($_FILES['interview_audio_upload']['name'])) {
+            $uploadDir = FCPATH . 'uploads/song_audio/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            $config = [
+                'upload_path'   => $uploadDir,
+                'allowed_types' => 'mp3|wav|m4a|aac|ogg',
+                'max_size'      => 80000,
+                'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['interview_audio_upload']['name']),
+            ];
+            $this->upload->initialize($config);
+            if ($this->upload->do_upload('interview_audio_upload')) {
+                $interviewAudioPathSave = 'uploads/song_audio/' . $this->upload->data('file_name');
+            }
+        }
+
         $thumbnailexcerpt = $this->input->post('thumbnailexcerpt');
         $songLyricsOriginal = $this->input->post('songLyricsOriginal');
         $songLyricsTranslated = $this->input->post('songLyricsTranslated');
@@ -279,6 +368,10 @@ class SongController extends CI_Controller {
         $about = $this->input->post('about');
         $songnotes = $this->input->post('songnotes');
         $songglossary = $this->input->post('songglossary');
+        // songglossary is now a multi-select of word IDs — convert array to CSV
+        if (is_array($songglossary)) {
+            $songglossary = implode(',', array_filter($songglossary, function ($v) { return trim((string)$v) !== ''; }));
+        }
         $publish = $this->input->post('publish');
         $reflection = $this->input->post('reflection');
         $metaTitle = $this->input->post('metaTitle');
@@ -294,6 +387,7 @@ class SongController extends CI_Controller {
             'singer' => $singer,
             'songTitleOriginal' => is_array($this->input->post('songTitleOriginal')) ? implode(',', $this->input->post('songTitleOriginal')) : $this->input->post('songTitleOriginal'),
             'poet' => is_array($this->input->post('poet')) ? implode(',', $this->input->post('poet')) : $this->input->post('poet'),
+            'attributed_poet' => is_array($this->input->post('attributed_poet')) ? implode(',', $this->input->post('attributed_poet')) : $this->input->post('attributed_poet'),
             'year' => $year,
             'relatedkeywords' => is_array($this->input->post('relatedkeywords')) ? implode(',', $this->input->post('relatedkeywords')) : $this->input->post('relatedkeywords'),
             'relatedpoems' => is_array($this->input->post('relatedpoems')) ? implode(',', $this->input->post('relatedpoems')) : $this->input->post('relatedpoems'),
@@ -327,15 +421,40 @@ class SongController extends CI_Controller {
         // Debug: print data and exit before saving
         // Model se insert function call
         $insert = $this->SongModel->insert_song($data);
-
-        if ($insert) {
+        // insert_song now returns the new id (int) on success, false on failure
+        if (is_int($insert) && $insert > 0) {
+            $newId = $insert;
+            $insertOk = true;
+        } else {
             $newId = (int) $this->db->insert_id();
+            $insertOk = (bool) $insert;
+        }
+        @file_put_contents(FCPATH . 'song_save_debug.log',
+            "[".date('Y-m-d H:i:s')."] insert=".var_export($insert,true)." newId=$newId\n"
+            ."POST keys: ".implode(',', array_keys($_POST))."\n"
+            ."data[singer]=".(isset($data['singer'])?var_export($data['singer'],true):'(unset)')."\n"
+            ."data[poet]=".(isset($data['poet'])?var_export($data['poet'],true):'(unset)')."\n"
+            ."data[reflections]=".(isset($data['reflections'])?var_export($data['reflections'],true):'(unset)')."\n"
+            ."data[relatedkeywords]=".(isset($data['relatedkeywords'])?var_export($data['relatedkeywords'],true):'(unset)')."\n"
+            ."data[films]=".(isset($data['films'])?var_export($data['films'],true):'(unset)')."\n"
+            ."POST[singer]=".(isset($_POST['singer'])?var_export($_POST['singer'],true):'(unset)')."\n"
+            ."POST[poet]=".(isset($_POST['poet'])?var_export($_POST['poet'],true):'(unset)')."\n"
+            ."POST[attributed_poet]=".(isset($_POST['attributed_poet'])?var_export($_POST['attributed_poet'],true):'(unset)')."\n"
+            ."---\n", FILE_APPEND);
+        if ($insertOk && $newId > 0) {
             $this->SongModel->sync_singer_poet_junction_tables($newId, $data);
+            $this->SongModel->sync_related_junction_tables($newId, $data);
+            if ($newId > 0 && $interviewAudioPathSave !== '' && $this->db->table_exists('songs')) {
+                $this->db->where('id', $newId)->update('songs', ['interview_audio' => $interviewAudioPathSave]);
+            }
+            if ($newId > 0 && $this->input->post('add_to_radio')) {
+                $this->_upsert_radio_for_song($newId);
+            }
         }
 
         if ($isAjax) {
             $this->output->set_content_type('application/json');
-            if ($insert) {
+            if ($insertOk) {
                 echo json_encode(['success' => true, 'message' => 'Song saved successfully!']);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Error saving data.']);
@@ -487,12 +606,32 @@ class SongController extends CI_Controller {
     // ⭐ FIRST: Create empty data array
     $data = [];
 
+    $interviewAudioPath = trim((string) $this->input->post('interview_audio_existing'));
+    if (!empty($_FILES['interview_audio_upload']['name'])) {
+        $this->load->library('upload');
+        $uploadDir = FCPATH . 'uploads/song_audio/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+        $config = [
+            'upload_path'   => $uploadDir,
+            'allowed_types' => 'mp3|wav|m4a|aac|ogg',
+            'max_size'      => 80000,
+            'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['interview_audio_upload']['name']),
+        ];
+        $this->upload->initialize($config);
+        if ($this->upload->do_upload('interview_audio_upload')) {
+            $interviewAudioPath = 'uploads/song_audio/' . $this->upload->data('file_name');
+        }
+    }
+
     // ⭐ 1) Thumbnail Upload (fixed)
     if (!empty($_FILES['thumbnailUrl']['name'])) {
 
         $config['upload_path'] = FCPATH . 'uploads/thumbnails/';
+        if (!is_dir($config['upload_path'])) { @mkdir($config['upload_path'], 0755, true); }
         $config['allowed_types'] = 'jpg|jpeg|png|gif';
-        $config['max_size'] = 2048; 
+        $config['max_size'] = 2048;
         $config['file_name'] = time() . '_' . $_FILES['thumbnailUrl']['name'];
 
         $this->upload->initialize($config);
@@ -527,13 +666,14 @@ class SongController extends CI_Controller {
         'genres',
         'gatherings',
         'songcategory',
-        'translator'
+        'translator',
+        'songglossary'
     ];
 
     // ⭐ 3) Convert every POST field safely
     foreach ($this->input->post() as $key => $value) {
 
-        if ($key == 'id' || $key === 'thumbnailUrl_existing') {
+        if ($key === 'id' || $key === 'thumbnailUrl_existing' || $key === 'add_to_radio' || $key === 'interview_audio_existing') {
             continue;
         }
 
@@ -556,6 +696,13 @@ class SongController extends CI_Controller {
 
     if ($updated) {
         $this->SongModel->sync_singer_poet_junction_tables($songId, $data);
+        $this->SongModel->sync_related_junction_tables((int) $songId, $data);
+        if ($interviewAudioPath !== '' && $this->db->table_exists('songs')) {
+            $this->db->where('id', (int) $songId)->update('songs', ['interview_audio' => $interviewAudioPath]);
+        }
+        if ($this->input->post('add_to_radio')) {
+            $this->_upsert_radio_for_song((int) $songId);
+        }
         $this->session->set_flashdata('success', '✅ Song updated successfully!');
     } else {
         $this->session->set_flashdata('error', '⚠️ Failed to update song.');
@@ -717,22 +864,258 @@ class SongController extends CI_Controller {
         echo json_encode(['success' => true, 'id' => (string)$newId, 'name' => $name]);
     }
 
+    /**
+     * AJAX: Create a new glossary word in the `word` table — supports original / translation / transliteration / meaning.
+     */
+    public function ajax_create_glossary_word() {
+        $this->output->set_content_type('application/json');
+        $original = trim((string) $this->input->post('word_original'));
+        $translation = trim((string) $this->input->post('word_translation'));
+        $translit = trim((string) $this->input->post('word_transliteration'));
+        $meaning = trim((string) $this->input->post('glossary_meaning'));
+        if ($translit === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Transliteration is required']);
+            return;
+        }
+        if (!$this->db->table_exists('word')) {
+            echo json_encode(['status' => 'error', 'message' => 'word table not found']);
+            return;
+        }
+        // Check duplicate by transliteration
+        $existing = $this->db->where('word_transliteration', $translit)->get('word')->row_array();
+        if (!empty($existing)) {
+            echo json_encode([
+                'status' => 'success',
+                'id' => (int) $existing['id'],
+                'label' => $translit,
+                'message' => 'Word already exists, selected.'
+            ]);
+            return;
+        }
+        // Build payload only with columns that actually exist (keep insert robust against schema variants)
+        $cols = $this->db->list_fields('word');
+        $isGlossaryRaw = strtolower((string) $this->input->post('is_glossary_word'));
+        $isGlossary = in_array($isGlossaryRaw, ['1', 'true', 'yes', 'on'], true) ? '1' : '0';
+        $maybe = [
+            'word_original' => $original,
+            'word_translation' => $translation,
+            'word_transliteration' => $translit,
+            'glossary_meaning' => $meaning,
+            'meaning' => $meaning,
+            'is_glossary_word' => $isGlossary,
+        ];
+        $payload = [];
+        foreach ($maybe as $k => $v) {
+            if (in_array($k, $cols, true)) { $payload[$k] = $v; }
+        }
+        if (empty($payload)) {
+            echo json_encode(['status' => 'error', 'message' => 'No matching columns to insert']);
+            return;
+        }
+        $ok = $this->db->insert('word', $payload);
+        if (!$ok) {
+            $err = $this->db->error();
+            echo json_encode(['status' => 'error', 'message' => !empty($err['message']) ? $err['message'] : 'Insert failed']);
+            return;
+        }
+        $newId = (int) $this->db->insert_id();
+        echo json_encode(['status' => 'success', 'id' => $newId, 'label' => $translit, 'message' => 'Glossary word added.']);
+    }
+
     public function ajax_create_keyword() {
         $this->output->set_content_type('application/json');
         $word = trim($this->input->post('word_transliteration'));
         if ($word === '') {
-            echo json_encode(['success' => false, 'message' => 'Keyword required']);
+            echo json_encode([
+                'success' => false,
+                'status' => 'error',
+                'message' => 'Keyword required',
+            ]);
             return;
         }
-        // Check if already exists
-        $existing = $this->db->where('word_transliteration', $word)->get('keywords')->row_array();
-        if (!empty($existing)) {
-            echo json_encode(['success' => true, 'id' => $existing['id'], 'word_transliteration' => $existing['word_transliteration']]);
+        $row = $this->WordModel->get_or_create_word_keyword($word);
+        if ($row === null) {
+            echo json_encode([
+                'success' => false,
+                'status' => 'error',
+                'message' => $this->db->table_exists('word') ? 'Failed to save keyword' : 'word table not found',
+            ]);
             return;
         }
-        $this->db->insert('keywords', ['word_transliteration' => $word]);
-        $id = $this->db->insert_id();
-        echo json_encode(['success' => true, 'id' => $id, 'word_transliteration' => $word]);
+        $id = $row['id'];
+        $label = $row['word_transliteration'];
+        echo json_encode([
+            'success' => true,
+            'status' => 'success',
+            'id' => $id,
+            'keyword_id' => $id,
+            'word_transliteration' => $label,
+            'message' => 'Keyword added successfully',
+        ]);
+    }
+
+    // ----- Generic AJAX updaters used by admin "Edit" buttons next to "Add New" -----
+
+    public function ajax_update_person() {
+        $this->output->set_content_type('application/json');
+        $id = (int)$this->input->post('id');
+        $name = trim((string)$this->input->post('name'));
+        if ($id <= 0 || $name === '') {
+            echo json_encode(['success' => false, 'message' => 'id and name are required']); return;
+        }
+        $parts = preg_split('/\s+/', $name);
+        $first = isset($parts[0]) ? $parts[0] : '';
+        if (count($parts) > 1) { $last = array_pop($parts); $middle = implode(' ', $parts); }
+        else { $last = ''; $middle = ''; }
+        $data = ['first_name' => $first, 'middle_name' => $middle, 'last_name' => $last];
+        $hyperlink = $this->input->post('hyperlink');
+        if ($hyperlink !== null && in_array('hyperlink', $this->db->list_fields('person'), true)) {
+            $data['hyperlink'] = trim((string)$hyperlink);
+        }
+        $this->db->where('id', $id)->update('person', $data);
+        $fullName = trim($first . ' ' . ($middle ? $middle . ' ' : '') . $last);
+        echo json_encode(['success' => true, 'id' => (string)$id, 'fullName' => $fullName !== '' ? $fullName : $name]);
+    }
+
+    public function ajax_update_translator() {
+        $this->output->set_content_type('application/json');
+        $id = (int)$this->input->post('id');
+        $name = trim((string)$this->input->post('name'));
+        if ($id <= 0 || $name === '') {
+            echo json_encode(['success' => false, 'message' => 'id and name are required']); return;
+        }
+        if (!$this->db->table_exists('translator')) {
+            echo json_encode(['success' => false, 'message' => 'translator table not found']); return;
+        }
+        $fields = $this->db->list_fields('translator');
+        $idCol = in_array('id', $fields) ? 'id' : $fields[0];
+        $nameCol = null;
+        foreach (['name','translator_name','title'] as $cand) { if (in_array($cand, $fields)) { $nameCol = $cand; break; } }
+        if ($nameCol === null) { echo json_encode(['success' => false, 'message' => 'No translator name column']); return; }
+        $data = [$nameCol => $name];
+        $hyperlink = $this->input->post('hyperlink');
+        if ($hyperlink !== null) {
+            if (in_array('hyperlink', $fields)) $data['hyperlink'] = trim((string)$hyperlink);
+            else if (in_array('hyperling', $fields)) $data['hyperling'] = trim((string)$hyperlink);
+        }
+        $this->db->where($idCol, $id)->update('translator', $data);
+        echo json_encode(['success' => true, 'id' => (string)$id, 'name' => $name]);
+    }
+
+    public function ajax_update_glossary_word() {
+        $this->output->set_content_type('application/json');
+        $id = (int)$this->input->post('id');
+        $translit = trim((string)$this->input->post('word_transliteration'));
+        if ($id <= 0 || $translit === '') {
+            echo json_encode(['status' => 'error', 'message' => 'id and transliteration are required']); return;
+        }
+        if (!$this->db->table_exists('word')) { echo json_encode(['status' => 'error', 'message' => 'word table not found']); return; }
+        $cols = $this->db->list_fields('word');
+        $maybe = [
+            'word_transliteration' => $translit,
+            'word_original' => trim((string)$this->input->post('word_original')),
+            'word_translation' => trim((string)$this->input->post('word_translation')),
+            'glossary_meaning' => trim((string)$this->input->post('glossary_meaning')),
+            'meaning' => trim((string)$this->input->post('glossary_meaning')),
+        ];
+        $payload = [];
+        foreach ($maybe as $k => $v) { if (in_array($k, $cols, true) && $v !== '') $payload[$k] = $v; }
+        if (empty($payload)) { echo json_encode(['status' => 'error', 'message' => 'No matching columns to update']); return; }
+        $this->db->where('id', $id)->update('word', $payload);
+        echo json_encode(['status' => 'success', 'id' => $id, 'label' => $translit]);
+    }
+
+    public function ajax_update_keyword() {
+        $this->output->set_content_type('application/json');
+        $id = (int)$this->input->post('id');
+        $word = trim((string)$this->input->post('word_transliteration'));
+        if ($id <= 0 || $word === '') {
+            echo json_encode(['success' => false, 'status' => 'error', 'message' => 'id and word required']); return;
+        }
+        if (!$this->db->table_exists('word')) { echo json_encode(['success' => false, 'status' => 'error', 'message' => 'word table not found']); return; }
+        $this->db->where('id', $id)->update('word', ['word_transliteration' => $word]);
+        echo json_encode(['success' => true, 'status' => 'success', 'id' => $id, 'word_transliteration' => $word]);
+    }
+
+    private function _radio_resolve_singer_csv($singer_field) {
+        $singer_field = trim((string) $singer_field);
+        if ($singer_field === '') {
+            return '';
+        }
+        $parts = array_map('trim', explode(',', $singer_field));
+        $allNumeric = true;
+        foreach ($parts as $p) {
+            if ($p === '') {
+                continue;
+            }
+            if (!ctype_digit($p)) {
+                $allNumeric = false;
+                break;
+            }
+        }
+        if (!$allNumeric) {
+            return $singer_field;
+        }
+        $names = [];
+        foreach ($parts as $p) {
+            if ($p === '' || !ctype_digit($p)) {
+                continue;
+            }
+            $row = $this->db->select('first_name, middle_name, last_name')
+                ->from('person')
+                ->where('id', (int) $p)
+                ->get()
+                ->row();
+            if (!$row) {
+                continue;
+            }
+            $bits = array_filter([
+                trim((string) ($row->first_name ?? '')),
+                trim((string) ($row->middle_name ?? '')),
+                trim((string) ($row->last_name ?? '')),
+            ]);
+            $names[] = !empty($bits) ? implode(' ', $bits) : ('Person #' . $p);
+        }
+        return implode(', ', $names);
+    }
+
+    private function _upsert_radio_for_song($songId) {
+        $songId = (int) $songId;
+        if ($songId <= 0 || !$this->db->table_exists('radio')) {
+            return;
+        }
+        $this->load->model('SongModel');
+        $songRow = $this->SongModel->get_song_by_id($songId);
+        if (!is_array($songRow)) {
+            return;
+        }
+        $song_name = trim((string) ($songRow['Songtitle_transliteration'] ?? $songRow['songTitle'] ?? ''));
+        if ($song_name === '') {
+            $song_name = trim((string) ($songRow['songTitleOriginal'] ?? ''));
+        }
+        $singerCsv = isset($songRow['singer']) ? trim((string) $songRow['singer']) : '';
+        $singer_name = $singerCsv !== '' ? $this->_radio_resolve_singer_csv($singerCsv) : '';
+        $audio = '';
+        if ($this->db->table_exists('songs')) {
+            $r = $this->db->select('interview_audio')->from('songs')->where('id', $songId)->get()->row_array();
+            $audio = trim((string) ($r['interview_audio'] ?? ''));
+        }
+        $row = [
+            'songs'                => (string) $songId,
+            'song_name'            => $song_name !== '' ? $song_name : null,
+            'singer_name'          => $singer_name !== '' ? $singer_name : null,
+            'location'             => trim((string) ($songRow['location'] ?? '')) ?: null,
+            'year'                 => trim((string) ($songRow['year'] ?? '')) ?: null,
+            'upload_song_mp3_file' => $audio !== '' ? $audio : null,
+            'radio_excerpt'        => trim((string) ($songRow['thumbnailexcerpt'] ?? '')) ?: null,
+        ];
+        $existing = $this->db->where('songs', (string) $songId)->get('radio')->row();
+        if ($existing) {
+            $this->db->where('id', (int) $existing->id)->update('radio', $row);
+        } else {
+            $row['publish'] = 0;
+            $this->db->insert('radio', $row);
+        }
     }
 }
 

@@ -4,8 +4,6 @@ include('inc/sidebar.php');
 ?>
 
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <style>
 .form-group { margin-bottom: 1rem; }
@@ -46,18 +44,85 @@ input[type="checkbox"] { width: auto; height: auto; margin-right: 10px; }
     $word_transliteration = isset($keyword['word_transliteration']) ? $keyword['word_transliteration'] : '';
     $word_translation = isset($keyword['word_translation']) ? $keyword['word_translation'] : '';
     $is_keyword = !empty($keyword['is_keyword']);
-    $is_glossary = !empty($keyword['is_glossary']);
-    $diacritic_text = isset($keyword['diacritic_text']) ? $keyword['diacritic_text'] : '';
-    $glossary_meaning = isset($keyword['glossary_meaning']) ? $keyword['glossary_meaning'] : '';
+    // is_glossary: word table column is `is_glossary_word` (varchar); legacy `keywords` table has `is_glossary`
+    $isGlossaryRaw = '';
+    if (isset($keyword['is_glossary_word']) && $keyword['is_glossary_word'] !== '') {
+        $isGlossaryRaw = strtolower(trim((string)$keyword['is_glossary_word']));
+    } elseif (isset($keyword['is_glossary']) && $keyword['is_glossary'] !== '') {
+        $isGlossaryRaw = strtolower(trim((string)$keyword['is_glossary']));
+    }
+    $is_glossary = in_array($isGlossaryRaw, ['1', 'true', 'yes', 'on'], true);
+    // diacritic: word table uses `diacritic`; legacy uses `diacritic_text`
+    $diacritic_text = '';
+    if (isset($keyword['diacritic_text']) && trim((string)$keyword['diacritic_text']) !== '') {
+        $diacritic_text = $keyword['diacritic_text'];
+    } elseif (isset($keyword['diacritic']) && trim((string)$keyword['diacritic']) !== '') {
+        $diacritic_text = $keyword['diacritic'];
+    }
+    // Word Meaning ab `meaning` column me save hota hai (legacy `glossary_meaning` fallback)
+    $glossary_meaning = '';
+    if (isset($keyword['meaning']) && trim((string)$keyword['meaning']) !== '') {
+        $glossary_meaning = $keyword['meaning'];
+    } elseif (isset($keyword['glossary_meaning'])) {
+        $glossary_meaning = $keyword['glossary_meaning'];
+    }
     $meta_title = isset($keyword['meta_title']) ? $keyword['meta_title'] : '';
     $meta_keywords = isset($keyword['meta_keywords']) ? $keyword['meta_keywords'] : '';
     $meta_description = isset($keyword['meta_description']) ? $keyword['meta_description'] : '';
-    $is_published = isset($keyword['is_published']) ? $keyword['is_published'] : '';
-    $related_songs = isset($keyword['related_songs']) ? explode(',', $keyword['related_songs']) : [];
-    $related_poems = isset($keyword['related_poems']) ? explode(',', $keyword['related_poems']) : [];
-    $related_reflections = isset($keyword['related_reflections']) ? explode(',', $keyword['related_reflections']) : [];
-    $related_films = isset($keyword['related_films']) ? explode(',', $keyword['related_films']) : [];
-    $related_film_episodes = isset($keyword['related_film_episodes']) ? explode(',', $keyword['related_film_episodes']) : [];
+    // publish: word table uses `publish`; legacy uses `is_published`
+    $publishRaw = '';
+    if (isset($keyword['publish']) && $keyword['publish'] !== '') {
+        $publishRaw = strtolower(trim((string)$keyword['publish']));
+    } elseif (isset($keyword['is_published']) && $keyword['is_published'] !== '') {
+        $publishRaw = strtolower(trim((string)$keyword['is_published']));
+    }
+    $is_published = in_array($publishRaw, ['1', 'true', 'yes', 'on'], true) ? '1' : '0';
+    // Helper: split CSV into trimmed array, skipping empties
+    $csvSplit = function ($v) {
+        if ($v === null || $v === '') return [];
+        return array_values(array_filter(array_map('trim', explode(',', (string)$v)), function ($x) { return $x !== ''; }));
+    };
+    // word table uses different column names — try both, prefer non-empty
+    $pickFirstNonEmpty = function () use ($keyword, $csvSplit) {
+        foreach (func_get_args() as $key) {
+            if (isset($keyword[$key]) && trim((string)$keyword[$key]) !== '') {
+                return $csvSplit($keyword[$key]);
+            }
+        }
+        return [];
+    };
+    // Songs from song_word junction (primary), fallback to legacy CSV
+    $related_songs = [];
+    if (isset($keyword['id']) && (int)$keyword['id'] > 0 && $this->db->table_exists('song_word')) {
+        $jr = $this->db->select('song_id')->from('song_word')->where('word_id', (int)$keyword['id'])->get()->result_array();
+        foreach ($jr as $r) {
+            if (!empty($r['song_id'])) { $related_songs[] = (string)(int)$r['song_id']; }
+        }
+        $related_songs = array_values(array_unique($related_songs));
+    }
+    if (empty($related_songs)) {
+        $related_songs = $pickFirstNonEmpty('related_songs');
+    }
+
+    // Generic helper to read junction table by word_id
+    $kwId = isset($keyword['id']) ? (int)$keyword['id'] : 0;
+    $junctionRead = function ($table, $fkCol, $legacyKeys = []) use ($kwId, $keyword, $pickFirstNonEmpty) {
+        $ids = [];
+        if ($kwId > 0 && $this->db->table_exists($table)) {
+            $jr = $this->db->select($fkCol)->from($table)->where('word_id', $kwId)->get()->result_array();
+            foreach ($jr as $r) { if (!empty($r[$fkCol])) { $ids[] = (string)(int)$r[$fkCol]; } }
+            $ids = array_values(array_unique($ids));
+        }
+        if (empty($ids) && !empty($legacyKeys)) {
+            $ids = call_user_func_array($pickFirstNonEmpty, $legacyKeys);
+        }
+        return $ids;
+    };
+
+    $related_poems         = $junctionRead('couplet_word',      'couplet_id',       ['related_poems', 'related_couplets']);
+    $related_reflections   = $junctionRead('word_reflection',   'reflection_id',    ['related_reflections']);
+    $related_films         = $junctionRead('film_primary_word', 'film_id',          ['related_films']);
+    $related_film_episodes = $junctionRead('film_episode_word', 'film_episode_id',  ['related_film_episodes', 'related_episodes', 'Related_film_episode']);
 
     // Preload related content options to reuse across sections
     $songs_options = $this->db->query("SELECT id, Songtitle_transliteration FROM songs")->result();
@@ -109,15 +174,15 @@ input[type="checkbox"] { width: auto; height: auto; margin-right: 10px; }
                         <label>Keywords</label>
                         <div style="padding-left:20px;">
                             <div class="form-group row align-items-center">
-                                <label class="col-md-2 col-form-label">⊙ Original <span style="color:red">*</span></label>
+                                <label class="col-md-2 col-form-label">⊙ Original</label>
                                 <div class="col-md-4">
-                                    <input type="text" name="word_original" id="word_original" class="form-control" value="<?= htmlspecialchars($word_original) ?>" placeholder="Enter Word Original" required>
+                                    <input type="text" name="word_original" id="word_original" class="form-control" value="<?= htmlspecialchars($word_original) ?>" placeholder="Enter Word Original">
                                 </div>
                             </div>
                             <div class="form-group row align-items-center">
-                                <label class="col-md-2 col-form-label">⊙ Translation <span style="color:red">*</span></label>
+                                <label class="col-md-2 col-form-label">⊙ Translation</label>
                                 <div class="col-md-4">
-                                    <input type="text" name="word_translation" id="word_translation" class="form-control" value="<?= htmlspecialchars($word_translation) ?>" placeholder="Enter Word Translation" required>
+                                    <input type="text" name="word_translation" id="word_translation" class="form-control" value="<?= htmlspecialchars($word_translation) ?>" placeholder="Enter Word Translation">
                                 </div>
                             </div>
                             <div class="form-group row align-items-center">
@@ -219,13 +284,60 @@ input[type="checkbox"] { width: auto; height: auto; margin-right: 10px; }
                                     <input type="text" name="diacritic_text" id="diacritic_text" class="form-control" value="<?= htmlspecialchars($diacritic_text) ?>" placeholder="Enter Diacritic Text">
                                 </div>
                             </div>
-                            <div class="form-group row align-items-center">
-                                <label class="col-md-2 col-form-label">Glossary Meaning</label>
-                                <div class="col-md-4">
-                                    <textarea name="glossary_meaning" id="glossary_meaning" class="form-control" rows="4" placeholder="Enter Glossary Meaning"><?= htmlspecialchars($glossary_meaning) ?></textarea>
-                                </div>
+                        </div>
+
+                        <!-- Word Meaning — always visible (not part of Glossary section) -->
+                        <div class="form-group row align-items-start">
+                            <label class="col-md-2 col-form-label">Word Meaning</label>
+                            <div class="col-md-8">
+                                <textarea name="meaning" id="glossary_meaning" class="form-control" rows="6" placeholder="Enter Word Meaning"><?= htmlspecialchars($glossary_meaning) ?></textarea>
                             </div>
                         </div>
+
+                        <script>
+                        (function () {
+                            function initWordMeaningEditor() {
+                                if (typeof CKEDITOR === 'undefined' || !CKEDITOR.replace) {
+                                    setTimeout(initWordMeaningEditor, 200);
+                                    return;
+                                }
+                                var el = document.getElementById('glossary_meaning');
+                                if (!el || el.tagName !== 'TEXTAREA') return;
+                                if (CKEDITOR.instances && CKEDITOR.instances['glossary_meaning']) return; // already inited
+                                try {
+                                    CKEDITOR.replace('glossary_meaning', {
+                                        height: 220,
+                                        extraPlugins: 'colorbutton,font,justify',
+                                        removePlugins: 'elementspath',
+                                        resize_enabled: false,
+                                        toolbar: [
+                                            { name: 'document', items: ['Source', '-', 'Preview'] },
+                                            { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat'] },
+                                            { name: 'paragraph', items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'] },
+                                            { name: 'links', items: ['Link', 'Unlink'] },
+                                            { name: 'insert', items: ['Image', 'Table', 'HorizontalRule', 'SpecialChar'] },
+                                            { name: 'styles', items: ['Styles', 'Format', 'Font', 'FontSize'] },
+                                            { name: 'colors', items: ['TextColor', 'BGColor'] },
+                                            { name: 'tools', items: ['Maximize'] }
+                                        ]
+                                    });
+                                } catch (e) {
+                                    console.warn('Word Meaning CKEditor init failed:', e);
+                                }
+                            }
+                            // Ensure editor data is pushed back to textarea before form submit
+                            document.addEventListener('submit', function (e) {
+                                if (typeof CKEDITOR !== 'undefined' && CKEDITOR.instances && CKEDITOR.instances['glossary_meaning']) {
+                                    CKEDITOR.instances['glossary_meaning'].updateElement();
+                                }
+                            }, true);
+                            if (document.readyState === 'loading') {
+                                document.addEventListener('DOMContentLoaded', initWordMeaningEditor);
+                            } else {
+                                initWordMeaningEditor();
+                            }
+                        })();
+                        </script>
 
                         <label><strong>Meta Data</strong></label>
                         <div style="padding-left:20px;">
@@ -250,12 +362,12 @@ input[type="checkbox"] { width: auto; height: auto; margin-right: 10px; }
                         </div>
 
                         <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">Publish Status <span style="color:red">*</span></label>
+                            <label class="col-md-2 col-form-label">Publish Status</label>
                             <div class="col-md-4">
                                 <select class="form-control" name="is_published" id="is_published" required>
-                                    <option value="">Select</option>
-                                    <option value="1" <?= $is_published === '1' ? 'selected' : '' ?>>Yes</option>
                                     <option value="0" <?= $is_published === '0' ? 'selected' : '' ?>>No</option>
+                                    <option value="1" <?= $is_published === '1' ? 'selected' : '' ?>>Yes</option>
+                                    
                                 </select>
                             </div>
                         </div>

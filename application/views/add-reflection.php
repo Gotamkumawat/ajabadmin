@@ -306,11 +306,38 @@ include('inc/sidebar.php');
                         return array_map('trim', explode(',', (string)$rawValue));
                     };
 
-                    $selected_related_keywords = isset($reflection->related_keywords) ? $readSelectedValues($reflection->related_keywords) : [];
-                    $selected_related_songs = isset($reflection->related_songs) ? $readSelectedValues($reflection->related_songs) : [];
-                    $selected_related_poems = isset($reflection->related_poems) ? $readSelectedValues($reflection->related_poems) : [];
+                    // Keywords: primary source = word_reflection junction (word_id, reflection_id); fallback to legacy CSV
+                    $selected_related_keywords = [];
+                    $reflectionIdForKw = isset($reflection->id) ? (int)$reflection->id : 0;
+                    if ($reflectionIdForKw > 0 && $this->db->table_exists('word_reflection')) {
+                        $jr = $this->db->select('word_id')->from('word_reflection')->where('reflection_id', $reflectionIdForKw)->get()->result_array();
+                        foreach ($jr as $r) {
+                            if (!empty($r['word_id'])) { $selected_related_keywords[] = (string)(int)$r['word_id']; }
+                        }
+                        $selected_related_keywords = array_values(array_unique($selected_related_keywords));
+                    }
+                    if (empty($selected_related_keywords) && isset($reflection->related_keywords)) {
+                        $selected_related_keywords = $readSelectedValues($reflection->related_keywords);
+                    }
+                    // Junction-table sourced multi-selects (with legacy CSV fallback)
+                    $reflJunctionRead = function ($table, $fkCol, $legacyField) use ($reflectionIdForKw, $reflection, $readSelectedValues) {
+                        $ids = [];
+                        if ($reflectionIdForKw > 0 && $this->db->table_exists($table)) {
+                            $jr = $this->db->select($fkCol)->from($table)->where('reflection_id', $reflectionIdForKw)->get()->result_array();
+                            foreach ($jr as $r) { if (!empty($r[$fkCol])) { $ids[] = (string)(int)$r[$fkCol]; } }
+                            $ids = array_values(array_unique($ids));
+                        }
+                        if (empty($ids) && isset($reflection->$legacyField)) {
+                            $ids = $readSelectedValues($reflection->$legacyField);
+                        }
+                        return $ids;
+                    };
+                    $selected_related_songs        = $reflJunctionRead('reflection_song',         'song_id',         'related_songs');
+                    $selected_related_poems        = $reflJunctionRead('reflection_couplet',      'couplet_id',      'related_poems');
+                    $selected_related_people       = $reflJunctionRead('reflection_person',       'person_id',       'related_people');
+                    $selected_related_film_episodes = $reflJunctionRead('reflection_filmepisode', 'film_episode_id', 'related_episodes');
+                    $selected_related_episodes = $selected_related_film_episodes; // alias used by Episodes select below
                     $selected_related_reflections = isset($reflection->related_reflections) ? $readSelectedValues($reflection->related_reflections) : [];
-                    $selected_related_people = isset($reflection->related_people) ? $readSelectedValues($reflection->related_people) : [];
                     $selected_related_films = isset($reflection->related_films) ? $readSelectedValues($reflection->related_films) : [];
                     $selected_related_episodes = isset($reflection->related_episodes) ? $readSelectedValues($reflection->related_episodes) : [];
                     ?>
@@ -336,7 +363,10 @@ include('inc/sidebar.php');
                                 <select class="select2 form-control" multiple="multiple" name="speaker_id[]" id="speaker_id" data-placeholder="Select Speaker/Author" required>
                                     <option value="">None Selected</option>
                                     <?php 
-                                    $speaker_rows = $this->db->query("SELECT id, first_name, middle_name, last_name FROM person")->result();
+                                    $speaker_rows = $this->db->query("
+                                        SELECT id, first_name, middle_name, last_name FROM person
+                                        ORDER BY LOWER(TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(middle_name,''),' ',COALESCE(last_name,'')))) ASC
+                                    ")->result();
                                     $selected_speakers = isset($reflection->speaker_id) ? explode(',', $reflection->speaker_id) : [];
                                     foreach ($speaker_rows as $p): 
                                         $parts = [];
@@ -354,6 +384,7 @@ include('inc/sidebar.php');
                                     <?php endforeach; ?>
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addSpeakerBtn">Add New</button>
+                                <button type="button" class="btn btn-primary btn-sm ml-1" id="editSpeakerBtn">Edit</button>
                             </div>
                         </div>
 
@@ -378,6 +409,27 @@ include('inc/sidebar.php');
                                     <button class="btn-secondary" id="cancelAddSpeaker">Cancel</button>
                                     <button class="btn-success" id="addSpeaker">Add</button>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group row align-items-center">
+                            <label class="col-md-2 col-form-label">Place <span style="color:red">*</span></label>
+                            <div class="col-md-4">
+                                <input type="text" name="interview_place" id="place" class="form-control" value="<?php echo isset($reflection->interview_place) ? $reflection->interview_place : (isset($reflection->place) ? $reflection->place : ''); ?>" placeholder="Enter Place" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group row align-items-center">
+                            <label class="col-md-2 col-form-label">Year <span style="color:red">*</span></label>
+                            <div class="col-md-4">
+                                <input type="text" name="interview_year" id="year" class="form-control" value="<?php echo isset($reflection->interview_year) ? $reflection->interview_year : (isset($reflection->year) ? $reflection->year : ''); ?>" placeholder="Enter Year" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group row align-items-center">
+                            <label class="col-md-2 col-form-label">Second Title</label>
+                            <div class="col-md-4">
+                                <input type="text" name="second_title" class="form-control" placeholder="Enter second title" value="<?php echo isset($reflection->second_title) ? $reflection->second_title : ''; ?>">
                             </div>
                         </div>
 
@@ -437,26 +489,6 @@ include('inc/sidebar.php');
                                 </div>
                                 </div>
 
-                                <div class="form-group row align-items-center">
-                                    <label class="col-md-2 col-form-label">Second Title</label>
-                                    <div class="col-md-4">
-                                        <input type="text" name="second_title" class="form-control" placeholder="Enter second title" value="<?php echo isset($reflection->second_title) ? $reflection->second_title : ''; ?>">
-                                    </div>
-                                </div>
-                        <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">Place <span style="color:red">*</span></label>
-                            <div class="col-md-4">
-                                <input type="text" name="interview_place" id="place" class="form-control" value="<?php echo isset($reflection->interview_place) ? $reflection->interview_place : (isset($reflection->place) ? $reflection->place : ''); ?>" placeholder="Enter Place" required>
-                            </div>
-                        </div>
-
-                        <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">Year <span style="color:red">*</span></label>
-                            <div class="col-md-4">
-                                <input type="text" name="interview_year" id="year" class="form-control" value="<?php echo isset($reflection->interview_year) ? $reflection->interview_year : (isset($reflection->year) ? $reflection->year : ''); ?>" placeholder="Enter Year" required>
-                            </div>
-                        </div>
-
                                 <!-- OTHER FORMAT FIELDS -->
                                 <div class="format-section other-section mt-3" style="display:none;">
                                 
@@ -497,7 +529,7 @@ include('inc/sidebar.php');
                         if (isset($reflection->thumbnail_url) && trim((string) $reflection->thumbnail_url) !== '') {
                             $existingReflectionThumb = trim((string) $reflection->thumbnail_url);
                         }
-                        $reflectionPublicBase = 'https://ajabshahar.aaravega.in';
+                        $reflectionPublicBase = 'https://ajab.designanddevelopment.in/admin';
                         $reflectionThumbPreviewSrc = '';
                         if ($existingReflectionThumb !== '') {
                             if (preg_match('#^https?://#i', $existingReflectionThumb)) {
@@ -548,7 +580,16 @@ include('inc/sidebar.php');
                         <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">Thumbnail Excerpt <span style="color:red">*</span></label>
                             <div class="col-md-4">
-                                <input type="text" name="thumbnail_excerpt" id="thumbnail_excerpt" class="form-control" value="<?php echo isset($reflection->thumbnail_excerpt) ? $reflection->thumbnail_excerpt : ''; ?>" placeholder="Enter Thumbnail Excerpt" required>
+                                <?php
+                                    // Thumbnail Excerpt = reflection.reflection_excerpt (canonical), with thumbnail_excerpt as legacy fallback
+                                    $thumbExcerpt = '';
+                                    if (isset($reflection->reflection_excerpt) && trim((string)$reflection->reflection_excerpt) !== '') {
+                                        $thumbExcerpt = $reflection->reflection_excerpt;
+                                    } elseif (isset($reflection->thumbnail_excerpt)) {
+                                        $thumbExcerpt = $reflection->thumbnail_excerpt;
+                                    }
+                                ?>
+                                <input type="text" name="thumbnail_excerpt" id="thumbnail_excerpt" class="form-control" value="<?php echo htmlspecialchars((string)$thumbExcerpt); ?>" placeholder="Enter Thumbnail Excerpt" required>
                             </div>
                         </div>
                             <!-- <div class="col-md-3">
@@ -577,7 +618,9 @@ include('inc/sidebar.php');
                             <div class="col-md-4 d-flex align-items-center">
                                 <select class="select2 form-control" multiple="multiple" name="related_keywords[]" id="related_keywords" data-placeholder="Select Keywords">
                                     <?php
-                                    $keyword_rows = $this->db->query("SELECT id, word_transliteration FROM keywords ORDER BY id DESC")->result();
+                                    $keyword_rows = $this->db->table_exists('word')
+                                        ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) DESC, id DESC")->result()
+                                        : [];
                                     foreach ($keyword_rows as $keyword_row):
                                         $kid = (string)$keyword_row->id;
                                         $isSelected = in_array($kid, $selected_related_keywords, true);
@@ -586,6 +629,7 @@ include('inc/sidebar.php');
                                     <?php endforeach; ?>
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtn">Add New</button>
+                                <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtn">Edit</button>
                             </div>
                             <!-- Add New Keyword Modal -->
                             <div class="modal" id="addNewKeywordModal">
@@ -595,7 +639,18 @@ include('inc/sidebar.php');
                                         <button class="close-btn" id="closeAddNewKeyword">&times;</button>
                                     </div>
                                     <div class="modal-body">
-                                        <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword">
+                                        <div class="form-group">
+                                            <label>Original</label>
+                                            <input type="text" id="newKeywordOriginal" class="form-control" placeholder="Enter Original Keyword">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Translation</label>
+                                            <input type="text" id="newKeywordTranslation" class="form-control" placeholder="Enter Keyword Translation">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Transliteration</label>
+                                            <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword Transliteration">
+                                        </div>
                                     </div>
                                     <div class="modal-footer">
                                         <button class="btn-secondary" id="cancelAddNewKeyword">Cancel</button>
@@ -828,9 +883,18 @@ include('inc/sidebar.php');
                         <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">Publish Status</label>
                             <div class="col-md-4">
+                                <?php
+                                    // Normalize publish — DB may store 1 / '1' / true / 'true' / 'yes' (or the inverses)
+                                    $rawRefPublish = isset($reflection->publish) ? $reflection->publish : '';
+                                    $refPublishVal = 'no';
+                                    if ($rawRefPublish === 1 || $rawRefPublish === '1' || $rawRefPublish === true ||
+                                        (is_string($rawRefPublish) && in_array(strtolower($rawRefPublish), ['true','yes','y','1'], true))) {
+                                        $refPublishVal = 'yes';
+                                    }
+                                ?>
                                 <select name="publish" id="publish" class="form-control">
-                                    <option value="no" <?php echo (isset($reflection->publish) && $reflection->publish == 'no') ? 'selected' : ''; ?>>No</option>
-                                    <option value="yes" <?php echo (isset($reflection->publish) && $reflection->publish == 'yes') ? 'selected' : ''; ?>>Yes</option>
+                                    <option value="no"  <?php echo $refPublishVal === 'no'  ? 'selected' : ''; ?>>No</option>
+                                    <option value="yes" <?php echo $refPublishVal === 'yes' ? 'selected' : ''; ?>>Yes</option>
                                 </select>
                             </div>
                         </div>
@@ -1073,13 +1137,15 @@ $(document).ready(function() {
             CKEDITOR.instances[instance].updateElement();
         }
 
+        // Only fields marked with red `*` in the form are required.
         const fields = [
-            { id: 'title', name: 'Reflection Title', type: 'input', required: true },
-            { id: 'format', name: 'Format', type: 'select', required: true },
-            { id: 'place', name: 'Place', type: 'input', required: true },
-            { id: 'year', name: 'Year', type: 'input', required: true },
-            { id: 'thumbnail_url', name: 'Thumbnail Image Upload', type: 'file', required: true },
-            { id: 'thumbnail_excerpt', name: 'Thumbnail Excerpt', type: 'input', required: true }
+            { id: 'title',             name: 'Reflection Title',     type: 'input',       required: true },
+            { id: 'speaker_id',        name: 'Speaker/Author',       type: 'multiselect', required: true },
+            { id: 'format',            name: 'Format',               type: 'select',      required: true },
+            { id: 'place',             name: 'Place',                type: 'input',       required: true },
+            { id: 'year',              name: 'Year',                 type: 'input',       required: true },
+            { id: 'thumbnail_url',     name: 'Thumbnail Image Upload', type: 'file',     required: true },
+            { id: 'thumbnail_excerpt', name: 'Thumbnail Excerpt',    type: 'input',       required: true }
         ];
 
         for (let field of fields) {
@@ -1098,6 +1164,8 @@ $(document).ready(function() {
             } else if (field.type === 'select') {
                 let value = element.value;
                 isEmpty = value === '' || value === null;
+            } else if (field.type === 'multiselect') {
+                isEmpty = !element.selectedOptions || element.selectedOptions.length === 0;
             } else if (field.type === 'file') {
                 isEmpty = !element.files || element.files.length === 0;
                 if (isEmpty && field.id === 'thumbnail_url') {
@@ -1216,4 +1284,31 @@ $(document).ready(function(){
 });
 </script>
 
+<script>
+(function () {
+  function bindEdit(btnId, opts) {
+    var b = document.getElementById(btnId);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      if (window.__adminEditOption) window.__adminEditOption(opts);
+      else alert('Edit helper not loaded');
+    });
+  }
+  var BASE = '<?php echo base_url(); ?>';
+  bindEdit('editSpeakerBtn', {
+    selectId: '#speaker_id', modalId: '#addSpeakerModal', addSaveBtnId: '#addSpeaker',
+    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Speaker',
+    extraPayload: { type_id: 1 },
+    fields: [
+      { inputId: '#addSpeakerName', postKey: 'name',      primary: true },
+      { inputId: '#addSpeakerLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+    ]
+  });
+  bindEdit('editKeywordBtn', {
+    selectId: '#related_keywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#addKeywordConfirm',
+    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
+    fields: [{ inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }]
+  });
+})();
+</script>
 <?php include('inc/footer.php'); ?>

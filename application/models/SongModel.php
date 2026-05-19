@@ -241,13 +241,17 @@ class SongModel extends CI_Model {
         if (!$this->db->table_exists('songs')) {
             return $song;
         }
-        $legacy = $this->db->select('year, location, interview_year, interview_place')
+        $legacy = $this->db->select('year, location, interview_year, interview_place, interview_audio')
             ->from('songs')
             ->where('id', $songId)
             ->get()
             ->row_array();
         if (empty($legacy)) {
             return $song;
+        }
+        $needAudio = !isset($song['interview_audio']) || trim((string) $song['interview_audio']) === '';
+        if ($needAudio && !empty($legacy['interview_audio'])) {
+            $song['interview_audio'] = trim((string) $legacy['interview_audio']);
         }
         if ($needYear) {
             $y = isset($legacy['year']) ? trim((string) $legacy['year']) : '';
@@ -273,23 +277,38 @@ class SongModel extends CI_Model {
     /**
      * If canonical data lives on `song` but a parallel `songs` row exists (same id), keep year/location in sync.
      */
-    private function sync_year_location_to_legacy_songs($songId, $year, $location) {
+    private function sync_year_location_to_legacy_songs($songId, $year, $location, array $extra = []) {
         $songId = (int) $songId;
         if ($songId <= 0 || $this->song_table_name() !== 'song' || !$this->db->table_exists('songs')) {
             return;
         }
+        $songsCols = $this->db->list_fields('songs');
         $exists = $this->db->get_where('songs', ['id' => $songId])->row_array();
-        if (empty($exists)) {
-            return;
-        }
         $row = [];
-        if ($year !== null && array_key_exists('year', $exists)) {
+        if ($year !== null && in_array('year', $songsCols, true)) {
             $row['year'] = $year;
         }
-        if ($location !== null && array_key_exists('location', $exists)) {
+        if ($location !== null && in_array('location', $songsCols, true)) {
             $row['location'] = $location;
         }
-        if (!empty($row)) {
+        // Sync singer/thumbnail/excerpt (and any extra fields) only if column exists in legacy songs table
+        foreach ($extra as $k => $v) {
+            if ($v !== null && in_array($k, $songsCols, true)) {
+                $row[$k] = $v;
+            }
+        }
+        if (empty($row)) {
+            return;
+        }
+        if (empty($exists)) {
+            // Insert new legacy row with same id so edit/read merges find data
+            $row['id'] = $songId;
+            // year column is NOT NULL in legacy schema — provide default if missing
+            if (in_array('year', $songsCols, true) && !isset($row['year'])) {
+                $row['year'] = '';
+            }
+            $this->db->insert('songs', $row);
+        } else {
             $this->db->where('id', $songId)->update('songs', $row);
         }
     }
@@ -344,6 +363,13 @@ class SongModel extends CI_Model {
     public function insert_song($data) {
         $yearSnap = array_key_exists('year', $data) ? $data['year'] : null;
         $locationSnap = array_key_exists('location', $data) ? $data['location'] : null;
+        // Capture legacy-only fields before they get filtered out (saved to `songs` table for edit page reads)
+        $legacyExtra = [
+            'singer'           => array_key_exists('singer', $data) ? $data['singer'] : null,
+            'poet'             => array_key_exists('poet', $data) ? $data['poet'] : null,
+            'thumbnailUrl'     => array_key_exists('thumbnailUrl', $data) ? $data['thumbnailUrl'] : null,
+            'thumbnailexcerpt' => array_key_exists('thumbnailexcerpt', $data) ? $data['thumbnailexcerpt'] : null,
+        ];
         $songText = $this->extract_song_text_payload($data);
         $titleOriginal = isset($data['songTitleOriginal']) ? $data['songTitleOriginal'] : null;
         $titleTranslit = isset($data['Songtitle_transliteration']) ? $data['Songtitle_transliteration'] : null;
@@ -372,9 +398,11 @@ class SongModel extends CI_Model {
         $data = $this->filter_to_song_table_columns($data);
         $ok = $this->db->insert($this->song_table_name(), $data);
         if ($ok) {
-            $this->sync_year_location_to_legacy_songs((int) $this->db->insert_id(), $yearSnap, $locationSnap);
+            $newId = (int) $this->db->insert_id();
+            $this->sync_year_location_to_legacy_songs($newId, $yearSnap, $locationSnap, $legacyExtra);
+            return $newId; // return the new song id so controller doesn't need insert_id()
         }
-        return $ok;
+        return false;
     }
 
 //     public function get_all_songs() {
@@ -504,7 +532,7 @@ class SongModel extends CI_Model {
                     }
                 }
 
-                // --- Keywords: song_word.word_id (same id space as `keywords.id` in this app) ---
+                // --- Keywords: song_word.word_id (`word.id`) ---
                 if ($this->db->table_exists('song_word')) {
                     $csv = isset($song['relatedkeywords']) ? trim((string) $song['relatedkeywords']) : '';
                     if ($csv === '') {
@@ -744,9 +772,107 @@ class SongModel extends CI_Model {
                 }
             }
 
+            /**
+             * Mirror of merge_related_content_from_junction_tables (read path):
+             * Sync ALL related-content junction tables from posted CSV fields.
+             * Called after both insert AND update so new + existing entries land in the same tables
+             * that the edit page reads from.
+             */
+            public function sync_related_junction_tables($songId, array $data) {
+                $songId = (int) $songId;
+                if ($songId <= 0) {
+                    return;
+                }
+                $csvToIds = function ($csv) {
+                    return array_unique(array_filter(array_map('intval', array_map('trim', explode(',', (string) $csv)))));
+                };
+                $replaceJunction = function ($table, $fkCol, $ids) use ($songId) {
+                    if (!$this->db->table_exists($table)) {
+                        return;
+                    }
+                    $this->db->where('song_id', $songId)->delete($table);
+                    foreach ($ids as $vid) {
+                        if ((int) $vid > 0) {
+                            $this->db->insert($table, ['song_id' => $songId, $fkCol => (int) $vid]);
+                        }
+                    }
+                };
+
+                // Reflections → reflection_song.reflection_id
+                if (array_key_exists('reflections', $data)) {
+                    $replaceJunction('reflection_song', 'reflection_id', $csvToIds($data['reflections']));
+                }
+                // Related songs → related_songs.related_song_id
+                if (array_key_exists('related_songs', $data)) {
+                    $replaceJunction('related_songs', 'related_song_id', $csvToIds($data['related_songs']));
+                }
+                // Keywords → song_word.word_id
+                if (array_key_exists('relatedkeywords', $data)) {
+                    $replaceJunction('song_word', 'word_id', $csvToIds($data['relatedkeywords']));
+                }
+                // Poems / couplets → song_couplet.couplet_id (fallback couplet_song)
+                if (array_key_exists('relatedpoems', $data) || array_key_exists('couplets', $data)) {
+                    $src = !empty($data['relatedpoems']) ? $data['relatedpoems']
+                         : (!empty($data['couplets']) ? $data['couplets'] : '');
+                    $ids = $csvToIds($src);
+                    if ($this->db->table_exists('song_couplet')) {
+                        $replaceJunction('song_couplet', 'couplet_id', $ids);
+                    } elseif ($this->db->table_exists('couplet_song')) {
+                        $replaceJunction('couplet_song', 'couplet_id', $ids);
+                    }
+                }
+                // Films → song_film.film_id (fallback film_primary_song)
+                if (array_key_exists('films', $data)) {
+                    $ids = $csvToIds($data['films']);
+                    if ($this->db->table_exists('song_film')) {
+                        $replaceJunction('song_film', 'film_id', $ids);
+                    } elseif ($this->db->table_exists('film_primary_song')) {
+                        $replaceJunction('film_primary_song', 'film_id', $ids);
+                    }
+                }
+                // Film episodes → song_film_episode.film_episode_id (fallback film_episode_song)
+                if (array_key_exists('film_episodes', $data)) {
+                    $ids = $csvToIds($data['film_episodes']);
+                    if ($this->db->table_exists('song_film_episode')) {
+                        $replaceJunction('song_film_episode', 'film_episode_id', $ids);
+                    } elseif ($this->db->table_exists('film_episode_song')) {
+                        $replaceJunction('film_episode_song', 'film_episode_id', $ids);
+                    }
+                }
+                // Stories → story_song.story_id
+                if (array_key_exists('related_stories', $data)) {
+                    $replaceJunction('story_song', 'story_id', $csvToIds($data['related_stories']));
+                }
+                // Related people → song_person.person_id (in addition to singer/poet which use song_singer/song_poet)
+                if (array_key_exists('related_people', $data) && $this->db->table_exists('song_person')) {
+                    // Don't wipe singer/poet entries — preserve those. Replace only "related_people" set
+                    // by deleting rows that are NOT in singer/poet sets, then inserting fresh.
+                    $singerIds = !empty($data['singer']) ? $csvToIds($data['singer']) : [];
+                    $poetIds = !empty($data['poet']) ? $csvToIds($data['poet']) : [];
+                    $keep = array_unique(array_merge($singerIds, $poetIds));
+                    $this->db->where('song_id', $songId);
+                    if (!empty($keep)) {
+                        $this->db->where_not_in('person_id', $keep);
+                    }
+                    $this->db->delete('song_person');
+                    $relatedIds = $csvToIds($data['related_people']);
+                    foreach ($relatedIds as $pid) {
+                        if ($pid > 0 && !in_array($pid, $keep, true)) {
+                            $this->db->insert('song_person', ['song_id' => $songId, 'person_id' => $pid]);
+                        }
+                    }
+                }
+            }
+
             public function update_song($id, $data) {
                 $yearSnap = array_key_exists('year', $data) ? $data['year'] : null;
                 $locationSnap = array_key_exists('location', $data) ? $data['location'] : null;
+                $legacyExtra = [
+                    'singer'           => array_key_exists('singer', $data) ? $data['singer'] : null,
+                    'poet'             => array_key_exists('poet', $data) ? $data['poet'] : null,
+                    'thumbnailUrl'     => array_key_exists('thumbnailUrl', $data) ? $data['thumbnailUrl'] : null,
+                    'thumbnailexcerpt' => array_key_exists('thumbnailexcerpt', $data) ? $data['thumbnailexcerpt'] : null,
+                ];
                 $songText = $this->extract_song_text_payload($data);
                 $titleOriginal = isset($data['songTitleOriginal']) ? $data['songTitleOriginal'] : null;
                 $titleTranslit = isset($data['Songtitle_transliteration']) ? $data['Songtitle_transliteration'] : null;
@@ -782,7 +908,7 @@ class SongModel extends CI_Model {
                 $this->db->where('id', $id);
                 $ok = $this->db->update($this->song_table_name(), $data);
                 if ($ok) {
-                    $this->sync_year_location_to_legacy_songs((int) $id, $yearSnap, $locationSnap);
+                    $this->sync_year_location_to_legacy_songs((int) $id, $yearSnap, $locationSnap, $legacyExtra);
                 }
                 return $ok;
             }

@@ -235,12 +235,12 @@ include('inc/sidebar.php');
         <div class="container-fluid">
             <div class="row mb-2">
                 <div class="col-sm-6">
-                    <h1>Ajab Shahar</h1>
+                    <h1>Ajab Share</h1>
                 </div>
                 <div class="col-sm-6">
                     <ol class="breadcrumb float-sm-right">
                         <li class="breadcrumb-item"><a href="add_new">Home</a></li>
-                        <li class="breadcrumb-item active">Add/Edit Ajab Shahar</li>
+                        <li class="breadcrumb-item active">Add/Edit Ajab Share</li>
                     </ol>
                 </div>
             </div>
@@ -275,41 +275,118 @@ include('inc/sidebar.php');
                         $currentType = isset($ajab_shahar->type_label) ? $ajab_shahar->type_label : '';
                         $currentVisualContent = isset($ajab_shahar->visual_content) ? $ajab_shahar->visual_content : '';
                         $currentId = isset($ajab_shahar->id) ? (int)$ajab_shahar->id : 0;
+                        $currentMenuImage = isset($ajab_shahar->menu_image) ? trim((string)$ajab_shahar->menu_image) : '';
+                        // Logo is shared across all Ajab Shahar menu tabs — fetch from any saved row
+                        if ($currentMenuImage === '' && $this->db->table_exists('about')) {
+                            $sharedImg = $this->db->select('menu_image')
+                                ->from('about')
+                                ->where('status', 0)
+                                ->where('menu_image IS NOT NULL', null, false)
+                                ->where("TRIM(menu_image) !=", '')
+                                ->order_by('id', 'DESC')
+                                ->limit(1)
+                                ->get()->row_array();
+                            if (!empty($sharedImg['menu_image'])) {
+                                $currentMenuImage = trim((string)$sharedImg['menu_image']);
+                            }
+                        }
                     ?>
 
                     <form name="aboutForm" id="aboutForm" method="post" enctype="multipart/form-data" action="<?php echo base_url('ajab-shahar/save'); ?>" data-save-url="<?php echo base_url('ajab-shahar/save'); ?>" data-update-base-url="<?php echo base_url('ajab-shahar/update'); ?>">
 
+                        <!-- Logo (visible across all menu tabs — kept above the menu selector) -->
                         <div class="row">
                             <div class="col-md-12 form-group">
-                                <label>Menu <span style="color:red">*</span></label>
+                                <label>Logo</label>
+                                <input type="hidden" name="menu_image_existing" id="menu_image_existing" value="<?php echo htmlspecialchars($currentMenuImage); ?>">
+                                <input type="file" name="menu_image" id="menu_image" class="form-control" accept="image/*" style="max-width: 360px;">
+                                <div id="menu_image_preview_wrap" style="margin-top:8px;<?php echo $currentMenuImage === '' ? 'display:none;' : ''; ?>">
+                                    <img id="menu_image_preview" src="<?php echo $currentMenuImage !== '' ? base_url(ltrim($currentMenuImage, '/')) : ''; ?>" alt="Logo" style="max-width:200px; max-height:120px; border:1px solid #ced4da; padding:4px; border-radius:4px;">
+                                    <div class="text-muted small">Current logo (shared across all menu tabs). Choose a new file to replace.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12 form-group">
+                                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                                    <label style="margin:0;">Menu <span style="color:red">*</span></label>
+                                    <button type="button" id="addAjabMenuBtn" class="btn btn-success btn-sm">
+                                        <i class="fa fa-plus"></i> Add New
+                                    </button>
+                                </div>
                                 <input type="hidden" name="type" id="type" value="<?php echo htmlspecialchars($currentType, ENT_QUOTES, 'UTF-8'); ?>">
                                 <input type="hidden" id="entry_id" value="<?php echo $currentId; ?>">
 
                                 <div id="ajabMenuSwitch" class="ajab-menu-grid">
-                                    <button type="button" class="ajab-menu-btn" data-type="intro">
-                                        <span class="menu-title">Intro</span>
-                                        <span class="menu-state" id="menuStateIntro">Not Saved</span>
+                                    <?php
+                                        $ajabMenusList = isset($ajab_menus) && is_array($ajab_menus) ? $ajab_menus : [];
+                                        foreach ($ajabMenusList as $m):
+                                            $slug = htmlspecialchars($m->slug, ENT_QUOTES, 'UTF-8');
+                                            $label = htmlspecialchars($m->label, ENT_QUOTES, 'UTF-8');
+                                    ?>
+                                    <button type="button" class="ajab-menu-btn" data-type="<?php echo $slug; ?>" data-id="<?php echo (int)$m->id; ?>">
+                                        <span class="menu-title"><?php echo $label; ?></span>
+                                        <span class="menu-state">Not Saved</span>
                                     </button>
-                                    <button type="button" class="ajab-menu-btn" data-type="translit guide">
-                                        <span class="menu-title">Translit Guide</span>
-                                        <span class="menu-state" id="menuStateTranslit">Not Saved</span>
-                                    </button>
-                                    <button type="button" class="ajab-menu-btn" data-type="copyrights">
-                                        <span class="menu-title">Copyrights</span>
-                                        <span class="menu-state" id="menuStateCopyrights">Not Saved</span>
-                                    </button>
+                                    <?php endforeach; ?>
                                 </div>
                                 <div id="selectedMenuInfo">Select a menu section to add/edit content.</div>
+                            </div>
+                        </div>
+
+                        <!-- Add New Menu Modal -->
+                        <div id="ajabAddMenuModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
+                            <div style="background:#fff; width:420px; max-width:92%; border-radius:8px; padding:18px; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+                                <h5 style="margin:0 0 12px;">Add New Menu</h5>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label for="ajabNewMenuName">Menu Name</label>
+                                    <input type="text" id="ajabNewMenuName" class="form-control" placeholder="e.g. Resources" maxlength="100">
+                                </div>
+                                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                    <button type="button" class="btn btn-secondary" id="ajabAddMenuCancel">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="ajabAddMenuSave">Add</button>
+                                </div>
                             </div>
                         </div>
 
                         <div class="row">
                             <div class="col-md-12 form-group">
                                 <label>Visual Content Editor</label>
-                               
+
                                 <input type="file" id="mediaImageInput" accept="image/*" multiple style="display:none;">
-                                <textarea class="form-control" name="meta_description" id="meta_description" rows="14" style="display:none;"><?php echo $currentVisualContent; ?></textarea>
+                                <textarea class="form-control" name="visual_content" id="visual_content_textarea" rows="14" style="display:none;"><?php echo $currentVisualContent; ?></textarea>
                                 <div id="gjs"></div>
+                            </div>
+                        </div>
+
+                        <!-- Meta Data Section -->
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <h4>Meta Data</h4>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <div class="form-group">
+                                            <label for="meta_title">Meta Title</label>
+                                            <input type="text" name="meta_title" id="meta_title" class="form-control" 
+                                                   value="<?php echo isset($ajab_shahar) ? htmlspecialchars($ajab_shahar->meta_title) : ''; ?>" 
+                                                   placeholder="Enter meta title">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="meta_keywords">Meta Keywords</label>
+                                            <input type="text" name="meta_keywords" id="meta_keywords" class="form-control" 
+                                                   value="<?php echo isset($ajab_shahar) ? htmlspecialchars($ajab_shahar->meta_keywords) : ''; ?>" 
+                                                   placeholder="Enter meta keywords (comma separated)">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="meta_description">Meta Description</label>
+                                            <textarea name="meta_description" id="meta_description" class="form-control" rows="4" 
+                                                      placeholder="Enter meta description"><?php echo isset($ajab_shahar) ? htmlspecialchars($ajab_shahar->meta_description) : ''; ?></textarea>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -335,19 +412,27 @@ include('inc/sidebar.php');
 $(document).ready(function() {
     let builder = null;
     let currentEntryId = '';
-    const menuTypes = ['intro', 'translit guide', 'copyrights'];
+    let menuTypes = <?php
+        $slugs = [];
+        if (!empty($ajabMenusList)) { foreach ($ajabMenusList as $m) { $slugs[] = $m->slug; } }
+        echo json_encode($slugs);
+    ?>;
+    let menuLabels = <?php
+        $labels = [];
+        if (!empty($ajabMenusList)) { foreach ($ajabMenusList as $m) { $labels[$m->slug] = $m->label; } }
+        echo json_encode((object)$labels);
+    ?>;
     const aboutApiUrl = <?php echo json_encode(base_url('Api/about')); ?>;
+    const menusListUrl = <?php echo json_encode(base_url('ajab-shahar/menus')); ?>;
+    const menusCreateUrl = <?php echo json_encode(base_url('ajab-shahar/menus/create')); ?>;
     const initialEntry = <?php echo json_encode([
         'id' => $currentId,
         'type' => $currentType,
         'visual_content' => $currentVisualContent
     ]); ?>;
 
-    const menuEntries = {
-        'intro': null,
-        'translit guide': null,
-        'copyrights': null
-    };
+    const menuEntries = {};
+    menuTypes.forEach(function(t){ menuEntries[t] = null; });
 
     const starterTemplate = `
 <section style="max-width: 900px; margin: 0 auto; padding: 10px 0;">
@@ -402,19 +487,15 @@ $(document).ready(function() {
     };
 
     const formatMenuTitle = function(type) {
-        if (type === 'translit guide') {
-            return 'Translit Guide';
-        }
-        if (type === 'copyrights') {
-            return 'Copyrights';
-        }
-        return 'Intro';
+        if (menuLabels && menuLabels[type]) return menuLabels[type];
+        return type.charAt(0).toUpperCase() + type.slice(1);
     };
 
     const setMenuStates = function() {
-        $('#menuStateIntro').text(menuEntries['intro'] ? 'Saved' : 'Not Saved');
-        $('#menuStateTranslit').text(menuEntries['translit guide'] ? 'Saved' : 'Not Saved');
-        $('#menuStateCopyrights').text(menuEntries['copyrights'] ? 'Saved' : 'Not Saved');
+        $('#ajabMenuSwitch .ajab-menu-btn').each(function(){
+            const t = ($(this).data('type') || '').toString();
+            $(this).find('.menu-state').text(menuEntries[t] ? 'Saved' : 'Not Saved');
+        });
     };
 
     const activateMenu = function(type) {
@@ -432,10 +513,29 @@ $(document).ready(function() {
 
         setBuilderContent(entry && entry.visual_content ? entry.visual_content : '');
 
+        // Logo is now shared across all menu tabs — no per-tab swap needed.
+
+        // Populate Meta fields from menu entry (auto-load when switching menu)
+        $('#meta_title').val(entry && entry.meta_title ? String(entry.meta_title) : '');
+        $('#meta_keywords').val(entry && entry.meta_keywords ? String(entry.meta_keywords) : '');
+        $('#meta_description').val(entry && entry.meta_description ? String(entry.meta_description) : '');
+
         const isExisting = !!currentEntryId;
         $('.save-btn').text(isExisting ? 'Update' : 'Save');
         $('#selectedMenuInfo').text(formatMenuTitle(type) + (isExisting ? ' selected (existing entry: will update).' : ' selected (new entry: will save once).'));
     };
+
+    // Live preview when user selects new file
+    $(document).on('change', '#menu_image', function () {
+        const f = this.files && this.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = function (e) {
+            $('#menu_image_preview').attr('src', e.target.result);
+            $('#menu_image_preview_wrap').show();
+        };
+        r.readAsDataURL(f);
+    });
 
     const hydrateFromApi = function() {
         return $.getJSON(aboutApiUrl)
@@ -597,6 +697,55 @@ $(document).ready(function() {
         activateMenu(defaultType);
     });
 
+    // ---- Add New Menu modal ----
+    const $addModal = $('#ajabAddMenuModal');
+    const openAddModal = function(){
+        $('#ajabNewMenuName').val('');
+        $addModal.css('display','flex');
+        setTimeout(function(){ $('#ajabNewMenuName').focus(); }, 50);
+    };
+    const closeAddModal = function(){ $addModal.hide(); };
+
+    $('#addAjabMenuBtn').on('click', openAddModal);
+    $('#ajabAddMenuCancel').on('click', closeAddModal);
+    $addModal.on('click', function(e){ if (e.target === this) closeAddModal(); });
+
+    $('#ajabAddMenuSave').on('click', function(){
+        const name = ($('#ajabNewMenuName').val() || '').trim();
+        if (!name) {
+            Swal.fire({icon:'warning', title:'Missing name', text:'Please enter a menu name'});
+            return;
+        }
+        const $btn = $(this).prop('disabled', true).text('Adding...');
+        $.post(menusCreateUrl, { label: name }, function(resp){
+            if (resp && resp.status && resp.data) {
+                const slug = String(resp.data.slug || '').toLowerCase();
+                const label = String(resp.data.label || name);
+                if (menuTypes.indexOf(slug) === -1) {
+                    menuTypes.push(slug);
+                    menuLabels[slug] = label;
+                    menuEntries[slug] = null;
+                    const $btnEl = $('<button type="button" class="ajab-menu-btn"></button>')
+                        .attr('data-type', slug)
+                        .attr('data-id', resp.data.id || '')
+                        .append($('<span class="menu-title"></span>').text(label))
+                        .append($('<span class="menu-state"></span>').text('Not Saved'));
+                    $('#ajabMenuSwitch').append($btnEl);
+                }
+                closeAddModal();
+                activateMenu(slug);
+                Swal.fire({icon:'success', title:'Menu added', timer:1200, showConfirmButton:false});
+            } else {
+                const msg = (resp && resp.message) ? resp.message : 'Failed to add menu';
+                Swal.fire({icon:'error', title:'Error', text: msg});
+            }
+        }, 'json').fail(function(){
+            Swal.fire({icon:'error', title:'Network error', text:'Could not reach server'});
+        }).always(function(){
+            $btn.prop('disabled', false).text('Add');
+        });
+    });
+
     $('#ajabMenuSwitch').on('click', '.ajab-menu-btn', function() {
         const type = ($(this).data('type') || '').toString();
         activateMenu(type);
@@ -635,7 +784,7 @@ $(document).ready(function() {
             return false;
         }
 
-        $('#meta_description').val(content);
+        $('#visual_content_textarea').val(content);
 
         const $form = $(this);
         const saveUrl = ($form.data('save-url') || '').toString();

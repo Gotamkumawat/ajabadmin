@@ -4,6 +4,25 @@ include 'inc/sidebar.php';
 ?>
 
 <!-- Content Wrapper. Contains page content -->
+<?php if ($this->session->flashdata('success')): ?>
+    <input type="hidden" id="flash-success" value="<?= htmlspecialchars($this->session->flashdata('success'), ENT_QUOTES) ?>">
+<?php endif; ?>
+<?php if ($this->session->flashdata('error')): ?>
+    <input type="hidden" id="flash-error" value="<?= htmlspecialchars($this->session->flashdata('error'), ENT_QUOTES) ?>">
+<?php endif; ?>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var s = document.getElementById('flash-success');
+    var e = document.getElementById('flash-error');
+    if (s && window.Swal) {
+        Swal.fire({ icon: 'success', title: 'Success', text: s.value, timer: 2200, showConfirmButton: false });
+    }
+    if (e && window.Swal) {
+        Swal.fire({ icon: 'error', title: 'Error', text: e.value });
+    }
+});
+</script>
 <div class="content-wrapper">
 
     <!-- Content Header -->
@@ -28,12 +47,13 @@ include 'inc/sidebar.php';
         <div class="container-fluid">
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="songsTableCount">0</span></div>
                     <table id="songsTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No</th>
-                                <th>Date of Upload</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Poem Title (Transliteration)</th>
+                                <th>Poem Title (Translation)</th>
                                 <th>Poet OR Attributed Poet (appearing in same column)</th>
                                 <!-- <th>Show on landing Page</th> -->
                                 <th>Published</th>
@@ -69,14 +89,15 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no', title: 'Sl. No' },
-            { data: 'created_at', title: 'Date of Upload' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'couplet_transliteration', title: 'Poem Title (Transliteration)' },
+            { data: 'couplet_translation', title: 'Poem Title (Translation)' },
             { data: 'poet_id', title: 'Poet OR Attributed Poet (appearing in same column)' },
             // { data: 'show_on_landing_page', title: 'Show on landing Page' },
             { data: 'is_published', title: 'Published' },
             { data: 'action', title: 'Action', orderable: false, searchable: false }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('songsTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

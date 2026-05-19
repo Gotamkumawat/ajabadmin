@@ -28,13 +28,14 @@ include 'inc/sidebar.php';
         <div class="container-fluid">
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="songsTableCount">0</span></div>
                     <table id="songsTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Word (Transliteration)</th>
-                                <th>Is Keyword</th>
-                                <th>Word Translation</th>
+                                <th>Word (Translation)</th>
+                                <th>Is Glossary Word</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -67,12 +68,13 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'id', title: 'Sl. No.' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'word_transliteration', title: 'Word (Transliteration)' },
-            { data: 'is_keyword', title: 'Is Keyword' },
-            { data: 'word_translation', title: 'Word Translation' },
+            { data: 'word_translation', title: 'Word (Translation)' },
+            { data: 'is_glossary', title: 'Is Glossary Word' },
             { data: 'actions', title: 'Action' }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('songsTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false

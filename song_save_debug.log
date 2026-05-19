@@ -1,0 +1,36 @@
+[2026-05-06 10:47:26] insert=true newId=0
+POST keys: umbrellaTitle,Songtitle_transliteration,songtitletraan,songTitleOriginal,poet,year,location,youtubeVideoId,soundCloudTrackUrl,thumbnailexcerpt,songLyricsOriginal,songLyricsNotes,songLyricsTranslated,about,songnotes,songglossary,relatedkeywords,related_songs,metaTitle,metaKeyword,metaDescription,publish
+data[singer]=(unset)
+data[poet]='77'
+data[reflections]=(unset)
+data[relatedkeywords]='290,252,116'
+data[films]=(unset)
+POST[singer]=(unset)
+POST[poet]=array (
+  0 => '77',
+)
+---
+[2026-05-06 10:57:10] insert=236 newId=236
+POST keys: umbrellaTitle,Songtitle_transliteration,songtitletraan,songTitleOriginal,poet,year,location,youtubeVideoId,soundCloudTrackUrl,thumbnailexcerpt,songLyricsOriginal,songLyricsNotes,songLyricsTranslated,about,songnotes,songglossary,relatedkeywords,related_songs,reflections,relatedpoems,related_people,films,film_episodes,metaTitle,metaKeyword,metaDescription,publish
+data[singer]=(unset)
+data[poet]='95'
+data[reflections]='100'
+data[relatedkeywords]='290,252,116,266'
+data[films]='1'
+POST[singer]=(unset)
+POST[poet]=array (
+  0 => '95',
+)
+---
+[2026-05-06 11:09:46] insert=237 newId=237
+POST keys: umbrellaTitle,Songtitle_transliteration,songtitletraan,songTitleOriginal,poet,year,location,youtubeVideoId,soundCloudTrackUrl,add_to_radio,thumbnailexcerpt,songLyricsOriginal,songLyricsNotes,translator,songLyricsTranslated,about,songnotes,songglossary,relatedkeywords,related_songs,reflections,relatedpoems,related_people,films,film_episodes,metaTitle,metaKeyword,metaDescription,publish
+data[singer]=(unset)
+data[poet]='94'
+data[reflections]='100'
+data[relatedkeywords]='252,116'
+data[films]='1'
+POST[singer]=(unset)
+POST[poet]=array (
+  0 => '94',
+)
+---

@@ -13,7 +13,7 @@ class Resource extends CI_Controller {
     }
 
     public function add() {
-        $this->load->view('add-resource');
+        redirect('add_new');
     }
 
     public function edit($id) {

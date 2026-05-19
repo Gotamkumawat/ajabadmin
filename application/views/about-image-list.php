@@ -39,10 +39,11 @@ include('inc/sidebar.php');
             <?php endif; ?>
             <div class="card">
                 <div class="card-body">
+                    <div class="list-total-entries" style="margin:0 0 12px 0;font-weight:600;font-size:15px;color:#333;">Total Entries: <span id="aboutImageTableCount">0</span></div>
                     <table id="aboutImageTable" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
+                                <th style="width:50px;">Sl.No</th>
                                 <th>Thumbnail URL</th>
                                 <th>Description</th>
                                 <th>Sort Order</th>
@@ -78,12 +79,16 @@ $(document).ready(function() {
             dataSrc: 'data'
         },
         columns: [
-            { data: 'sl_no', title: 'Sl. No.' },
+            { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
             { data: 'thumbnail_url', title: 'Thumbnail URL' },
             { data: 'image_description', title: 'Description' },
             { data: 'sort_order_no', title: 'Sort Order' },
             { data: 'about_header_name', title: 'About Header' },
-            { data: 'is_published', title: 'Published', render: function(data) { return data == 'true' ? 'Yes' : 'No'; } },
+            { data: 'is_published', title: 'Published', render: function(data) {
+                if (data === 1 || data === '1' || data === true) return 'Yes';
+                if (typeof data === 'string' && ['true','yes','y','1'].indexOf(data.toLowerCase()) !== -1) return 'Yes';
+                return 'No';
+            } },
             {
                 data: 'id',
                 title: 'Action',
@@ -97,6 +102,7 @@ $(document).ready(function() {
                 }
             }
         ],
+        drawCallback: function(settings) { var api = this.api(); var total = api.page.info().recordsTotal; document.getElementById('aboutImageTableCount').textContent = total; },
         responsive: true,
         lengthChange: true,
         autoWidth: false
