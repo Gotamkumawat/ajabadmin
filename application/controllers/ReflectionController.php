@@ -21,6 +21,29 @@ class ReflectionController extends CI_Controller {
     }
 
     public function save() {
+        // Handle interview audio upload (text "Audio Link" field replaced by Audio Upload).
+        // Keeps the existing file when no new one is chosen.
+        $interview_audio = trim((string) $this->input->post('interview_audio_existing'));
+        if (!empty($_FILES['interview_audio_upload']['name'])) {
+            $audioCfg = [
+                'upload_path'   => FCPATH . 'uploads/audio/',
+                'allowed_types' => 'mp3|wav|ogg|m4a|aac|flac',
+                'max_size'      => 51200, // 50 MB
+                'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['interview_audio_upload']['name']),
+            ];
+            if (!is_dir($audioCfg['upload_path'])) { @mkdir($audioCfg['upload_path'], 0755, true); }
+            $this->load->library('upload');
+            $this->upload->initialize($audioCfg);
+            if ($this->upload->do_upload('interview_audio_upload')) {
+                $u = $this->upload->data();
+                $interview_audio = 'uploads/audio/' . $u['file_name'];
+            } else {
+                $this->session->set_flashdata('error', $this->upload->display_errors());
+                redirect('add-reflection');
+                return;
+            }
+        }
+
         // Handle thumbnail upload
         $thumbnail_url = '';
         if (!empty($_FILES['thumbnail_url']['name'])) {
@@ -53,7 +76,7 @@ class ReflectionController extends CI_Controller {
             'format'              => $this->input->post('format'),
             'second_title'        => $this->input->post('second_title'),
             'interview_video'     => $this->input->post('interview_video'),
-            'interview_audio'     => $this->input->post('interview_audio'),
+            'interview_audio'     => $interview_audio,
             'interview_text'      => $this->input->post('interview_text'),
             'text_interview'      => $this->input->post('interview_text'),
             'interview_about'     => $this->input->post('interview_about'),
@@ -174,6 +197,34 @@ class ReflectionController extends CI_Controller {
 
     public function update($id) {
         $this->load->library('upload');
+
+        // Handle interview audio upload (file replaces previous text "Audio Link")
+        $interview_audio = trim((string) $this->input->post('interview_audio_existing'));
+        if (!empty($_FILES['interview_audio_upload']['name'])) {
+            $audioCfg = [
+                'upload_path'   => FCPATH . 'uploads/audio/',
+                'allowed_types' => 'mp3|wav|ogg|m4a|aac|flac',
+                'max_size'      => 51200,
+                'file_name'     => time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['interview_audio_upload']['name']),
+            ];
+            if (!is_dir($audioCfg['upload_path'])) { @mkdir($audioCfg['upload_path'], 0755, true); }
+            $this->upload->initialize($audioCfg);
+            if ($this->upload->do_upload('interview_audio_upload')) {
+                $u = $this->upload->data();
+                $interview_audio = 'uploads/audio/' . $u['file_name'];
+            } else {
+                $this->session->set_flashdata('error', $this->upload->display_errors());
+                redirect('reflection/edit/' . $id);
+                return;
+            }
+        }
+        if ($interview_audio === '') {
+            $existing = $this->ReflectionModel->get_reflection_by_id($id);
+            if ($existing && !empty($existing->interview_audio)) {
+                $interview_audio = $existing->interview_audio;
+            }
+        }
+
         $thumbnail_url = trim((string) $this->input->post('thumbnail_url_existing'));
         if (!empty($_FILES['thumbnail_url']['name'])) {
             $config['upload_path'] = FCPATH . 'uploads/thumbnails/';
@@ -205,7 +256,7 @@ class ReflectionController extends CI_Controller {
             'format' => $this->input->post('format'),
             'second_title' => $this->input->post('second_title'),
             'interview_video' => $this->input->post('interview_video'),
-            'interview_audio' => $this->input->post('interview_audio'),
+            'interview_audio' => $interview_audio,
             'interview_text' => $this->input->post('interview_text'),
             'text_interview' => $this->input->post('interview_text'),
             'interview_about' => $this->input->post('interview_about'),

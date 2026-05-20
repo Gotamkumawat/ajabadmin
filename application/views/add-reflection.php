@@ -413,16 +413,16 @@ include('inc/sidebar.php');
                         </div>
 
                         <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">Place <span style="color:red">*</span></label>
+                            <label class="col-md-2 col-form-label">Place</label>
                             <div class="col-md-4">
-                                <input type="text" name="interview_place" id="place" class="form-control" value="<?php echo isset($reflection->interview_place) ? $reflection->interview_place : (isset($reflection->place) ? $reflection->place : ''); ?>" placeholder="Enter Place" required>
+                                <input type="text" name="interview_place" id="place" class="form-control" value="<?php echo isset($reflection->interview_place) ? $reflection->interview_place : (isset($reflection->place) ? $reflection->place : ''); ?>" placeholder="Enter Place">
                             </div>
                         </div>
 
                         <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">Year <span style="color:red">*</span></label>
+                            <label class="col-md-2 col-form-label">Year</label>
                             <div class="col-md-4">
-                                <input type="text" name="interview_year" id="year" class="form-control" value="<?php echo isset($reflection->interview_year) ? $reflection->interview_year : (isset($reflection->year) ? $reflection->year : ''); ?>" placeholder="Enter Year" required>
+                                <input type="text" name="interview_year" id="year" class="form-control" value="<?php echo isset($reflection->interview_year) ? $reflection->interview_year : (isset($reflection->year) ? $reflection->year : ''); ?>" placeholder="Enter Year">
                             </div>
                         </div>
 
@@ -461,11 +461,30 @@ include('inc/sidebar.php');
                                     </div>
                                 </div>
 
+                                <?php
+                                $reflectionInterviewAudio = isset($reflection->interview_audio) ? trim((string) $reflection->interview_audio) : '';
+                                // Build a public preview src for existing audio (same approach as song thumbnail preview)
+                                $reflectionAudioPreviewSrc = '';
+                                if ($reflectionInterviewAudio !== '') {
+                                    if (preg_match('#^https?://#i', $reflectionInterviewAudio)) {
+                                        $reflectionAudioPreviewSrc = $reflectionInterviewAudio;
+                                    } else {
+                                        $reflectionAudioPreviewSrc = base_url(ltrim($reflectionInterviewAudio, '/'));
+                                    }
+                                }
+                                ?>
                                 <div class="row">
                                     <div class="col-12">
                                         <div class="form-group">
-                                            <label>Audio Link</label>
-                                            <input type="text" name="interview_audio" class="form-control" placeholder="Enter audio link" value="<?php echo isset($reflection->interview_audio) ? $reflection->interview_audio : ''; ?>">
+                                            <label>Audio Upload</label>
+                                            <?php if ($reflectionInterviewAudio !== ''): ?>
+                                                <input type="hidden" name="interview_audio_existing" value="<?= htmlspecialchars($reflectionInterviewAudio) ?>">
+                                                <div class="mb-2">
+                                                    <audio controls preload="none" src="<?= htmlspecialchars($reflectionAudioPreviewSrc) ?>" style="max-width:100%;"></audio>
+                                                    <p class="text-muted small mb-0">Current file is kept unless you choose a new audio file.</p>
+                                                </div>
+                                            <?php endif; ?>
+                                            <input type="file" name="interview_audio_upload" id="interview_audio_upload" class="form-control" accept="audio/*">
                                         </div>
                                     </div>
                                 </div>

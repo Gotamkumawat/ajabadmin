@@ -23,7 +23,15 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | a PHP script and you can easily do that on your own.
 |
 */
-$config['base_url'] = 'https://ajab.designanddevelopment.in/admin/';
+// Auto-detect host so the app works both locally and on the live server
+// without changing this file. Falls back to the production URL for CLI.
+if (isset($_SERVER['HTTP_HOST']) && $_SERVER['HTTP_HOST'] !== '') {
+	$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+		|| (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443);
+	$config['base_url'] = ($isHttps ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . '/';
+} else {
+	$config['base_url'] = 'https://ajab.designanddevelopment.in/admin/';
+}
 
 /*
 |--------------------------------------------------------------------------

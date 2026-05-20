@@ -88,22 +88,34 @@
       var $dd = $(this).closest('.multiselect-container.dropdown-menu');
       if (!$dd.length) return;
       var lis = $dd[0].children;
-      var shown = 0, hidden = 0;
       for (var i = 0; i < lis.length; i++) {
         var li = lis[i];
         if (li.classList && li.classList.contains('ms-helper-container')) continue;
-        var txt = (li.textContent || '').toLowerCase();
-        if (q === '' || txt.indexOf(q) !== -1) {
+        var txt = (li.textContent || '').toLowerCase().trim();
+        // First-name basis: match the start of the option label OR the start of
+        // any whitespace-separated word inside it. So "kab" matches "Kabir Das",
+        // "das" matches "Kabir Das", but "abir" does NOT match (no mid-word hits).
+        var match = false;
+        if (q === '') {
+          match = true;
+        } else {
+          if (txt.indexOf(q) === 0) {
+            match = true;
+          } else {
+            var words = txt.split(/\s+/);
+            for (var w = 0; w < words.length; w++) {
+              if (words[w].indexOf(q) === 0) { match = true; break; }
+            }
+          }
+        }
+        if (match) {
           li.classList.remove('ms-hidden');
           li.style.setProperty('display', '', 'important');
-          shown++;
         } else {
           li.classList.add('ms-hidden');
           li.style.setProperty('display', 'none', 'important');
-          hidden++;
         }
       }
-      console.log('[ms-search] q=', q, 'shown=', shown, 'hidden=', hidden);
     });
 
     /**
@@ -308,18 +320,30 @@
         }
       };
 
-      // Close detection — click on close/cancel buttons or backdrop or Esc
+      // Close detection — click on close/cancel buttons or backdrop or Esc.
+      // Ignore clicks that arrive within ~400ms of opening: the originating
+      // click on the Edit button bubbles up to the modal container right after
+      // we show it and would otherwise immediately close the popup.
+      var openedAt = Date.now();
+      console.log('[adminEdit] modal opened at', openedAt, 'modal:', opts.modalId);
       $modal.on('click.__adminEdit', function (e) {
+        var age = Date.now() - openedAt;
+        if (age < 400) { console.log('[adminEdit] ignoring modal click (age ' + age + 'ms)', e.target); return; }
         var t = e.target;
-        if (t === this) { restore(); return; }
+        if (t === this) { console.log('[adminEdit] backdrop click → close'); restore(); return; }
         var $t = $(t);
         if ($t.is('.close-btn, .btn-secondary, [data-dismiss="modal"], .close') || $t.closest('.close-btn, .btn-secondary, [data-dismiss="modal"], .close').length) {
+          console.log('[adminEdit] close/cancel button click → close');
           setTimeout(restore, 30);
         }
       });
-      $(document).on('keydown.__adminEdit', function (e) { if (e.key === 'Escape') restore(); });
+      $(document).on('keydown.__adminEdit', function (e) { if (e.key === 'Escape') { console.log('[adminEdit] Esc → close'); restore(); } });
       // Bootstrap modal hidden event
-      if (isBsModal) $modal.on('hidden.bs.modal.__adminEdit', function () { restore(); $modal.off('hidden.bs.modal.__adminEdit'); });
+      if (isBsModal) $modal.on('hidden.bs.modal.__adminEdit', function () {
+        var age = Date.now() - openedAt;
+        console.log('[adminEdit] hidden.bs.modal fired (age ' + age + 'ms) → close');
+        restore(); $modal.off('hidden.bs.modal.__adminEdit');
+      });
 
       // ----- Update handler -----
       $updateBtn.on('click', function () {
@@ -407,22 +431,17 @@
             if (!$dropdown.length || $dropdown.find('.ms-helper-container').length) return;
             $el.data('ms-initial-vals', $el.val() ? $el.val().slice() : []);
 
+            // Only Reset remains — "Select All" and "Select None" are removed per UX request.
             var $helper = $('<li class="ms-helper-container"></li>');
             var $row = $('<div class="ms-action-row"></div>');
-            var $all = $('<button type="button" class="ms-action-btn">Select All</button>');
-            var $none = $('<button type="button" class="ms-action-btn">Select None</button>');
             var $reset = $('<button type="button" class="ms-action-btn">Reset</button>');
-            $all.on('click', function(e) { e.preventDefault(); e.stopPropagation();
-              $el.multiselect('selectAll', false); $el.multiselect('updateButtonText'); $el.trigger('change'); });
-            $none.on('click', function(e) { e.preventDefault(); e.stopPropagation();
-              $el.multiselect('deselectAll', false); $el.multiselect('updateButtonText'); $el.trigger('change'); });
             $reset.on('click', function(e) { e.preventDefault(); e.stopPropagation();
               var initial = $el.data('ms-initial-vals') || [];
               $el.multiselect('deselectAll', false);
               if (initial.length) $el.multiselect('select', initial, false);
               $el.multiselect('updateButtonText'); $el.trigger('change');
             });
-            $row.append($all).append($none).append($reset);
+            $row.append($reset);
             $helper.append($row);
 
             var $search = $('<input type="text" class="ms-search-input" placeholder="Search..." autocomplete="off" />');
@@ -601,5 +620,324 @@
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
 <script src="<?= base_url('assets/js/add-couplet.js') ?>"></script>
+
+<!-- ============================================================= -->
+<!--  ADMIN-WIDE IMAGE CROP TOOL  (Cropper.js)                      -->
+<!--  Auto-attaches to every <input type="file" accept="image/*">. -->
+<!--  On file select -> opens crop modal -> cropped image is put    -->
+<!--  back into the SAME input so the normal form upload sends the  -->
+<!--  cropped file. No controller changes needed.                   -->
+<!--  Skip an input by adding  data-no-crop="1"  to it.             -->
+<!-- ============================================================= -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css">
+<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+<style>
+  #adminCropModal{position:fixed;inset:0;z-index:200000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);}
+  #adminCropModal .acm-box{background:#fff;border-radius:8px;width:min(900px,94vw);max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.4);}
+  #adminCropModal .acm-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #eee;}
+  #adminCropModal .acm-head h3{margin:0;font-size:18px;color:#333;}
+  #adminCropModal .acm-close{background:none;border:none;font-size:26px;line-height:1;cursor:pointer;color:#888;}
+  #adminCropModal .acm-body{padding:14px 18px;overflow:auto;}
+  #adminCropModal .acm-stage{max-height:60vh;}
+  #adminCropModal .acm-stage img{max-width:100%;display:block;}
+  #adminCropModal .acm-ratios{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px;}
+  #adminCropModal .acm-ratios button{border:1px solid #c6c6c6;background:#f7f7f7;border-radius:4px;padding:6px 12px;font-size:13px;cursor:pointer;}
+  #adminCropModal .acm-ratios button.active{background:#28a745;color:#fff;border-color:#28a745;}
+  #adminCropModal .acm-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;border-top:1px solid #eee;}
+  #adminCropModal .acm-foot button{border:none;border-radius:4px;padding:9px 20px;font-size:14px;cursor:pointer;}
+  #adminCropModal .acm-cancel{background:#6c757d;color:#fff;}
+  #adminCropModal .acm-skip{background:#e0e0e0;color:#333;}
+  #adminCropModal .acm-ok{background:#28a745;color:#fff;}
+</style>
+<div id="adminCropModal" aria-hidden="true">
+  <div class="acm-box">
+    <div class="acm-head">
+      <h3>Crop Image</h3>
+      <button type="button" class="acm-close" title="Cancel">&times;</button>
+    </div>
+    <div class="acm-body">
+      <div class="acm-stage"><img id="acmImage" alt="To crop" /></div>
+      <div class="acm-ratios">
+        <button type="button" data-r="NaN" class="active">Free</button>
+        <button type="button" data-r="1.7777777778">16:9</button>
+        <button type="button" data-r="1">1:1</button>
+        <button type="button" data-r="1.3333333333">4:3</button>
+        <button type="button" data-r="0.75">3:4</button>
+      </div>
+    </div>
+    <div class="acm-foot">
+      <button type="button" class="acm-cancel">Cancel</button>
+      <button type="button" class="acm-skip" title="Upload without cropping">Use Original</button>
+      <button type="button" class="acm-ok">Crop &amp; Use</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  if (window.__adminCropInit) return;
+  window.__adminCropInit = true;
+
+  var modal   = document.getElementById('adminCropModal');
+  var imgEl   = document.getElementById('acmImage');
+  var btnOk   = modal.querySelector('.acm-ok');
+  var btnSkip = modal.querySelector('.acm-skip');
+  var btnCx   = modal.querySelector('.acm-cancel');
+  var btnX    = modal.querySelector('.acm-close');
+  var ratioBtns = modal.querySelectorAll('.acm-ratios button');
+
+  var cropper = null;
+  var activeInput = null;
+  var origFile = null;
+  var objUrl = null;
+
+  function shouldHandle(input) {
+    if (!input || input.type !== 'file') return false;
+    if (input.hasAttribute('data-no-crop')) return false;
+    if (input.dataset.acmDone === '1') return false;          // re-entrancy guard
+    if (input.multiple) return false;                          // single image only
+    var acc = (input.getAttribute('accept') || '').toLowerCase();
+    return acc.indexOf('image') !== -1;
+  }
+
+  function cleanup() {
+    if (cropper) { try { cropper.destroy(); } catch (e) {} cropper = null; }
+    if (objUrl) { URL.revokeObjectURL(objUrl); objUrl = null; }
+    imgEl.removeAttribute('src');
+    activeInput = null; origFile = null;
+  }
+
+  function closeModal() {
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    cleanup();
+  }
+
+  function setRatio(r) {
+    ratioBtns.forEach(function (b) { b.classList.remove('active'); });
+    if (cropper) cropper.setAspectRatio(r);
+  }
+
+  ratioBtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      ratioBtns.forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      var v = parseFloat(b.getAttribute('data-r'));
+      if (cropper) cropper.setAspectRatio(isNaN(v) ? NaN : v);
+    });
+  });
+
+  function openModalFor(input, file) {
+    activeInput = input;
+    origFile = file;
+    if (objUrl) URL.revokeObjectURL(objUrl);
+    objUrl = URL.createObjectURL(file);
+    imgEl.src = objUrl;
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    ratioBtns.forEach(function (x) { x.classList.remove('active'); });
+    ratioBtns[0].classList.add('active'); // Free
+    imgEl.onload = function () {
+      if (cropper) { try { cropper.destroy(); } catch (e) {} }
+      cropper = new Cropper(imgEl, {
+        viewMode: 1,
+        autoCropArea: 1,
+        movable: true,
+        zoomable: true,
+        background: true,
+        responsive: true
+      });
+    };
+  }
+
+  // Put a Blob back into the original <input type=file> as a real File
+  function setInputFile(input, blob, name) {
+    try {
+      var dt = new DataTransfer();
+      var f = new File([blob], name, { type: blob.type || 'image/jpeg', lastModified: Date.now() });
+      dt.items.add(f);
+      input.dataset.acmDone = '1';        // prevent re-trigger from the change we cause
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      // allow future selections to be cropped again
+      setTimeout(function () { input.dataset.acmDone = '0'; }, 0);
+    } catch (e) {
+      console.error('[adminCrop] could not set cropped file, keeping original', e);
+    }
+  }
+
+  btnOk.addEventListener('click', function () {
+    if (!cropper || !activeInput) { closeModal(); return; }
+    var input = activeInput;
+    var srcName = (origFile && origFile.name) ? origFile.name : 'image.jpg';
+    var outType = (origFile && origFile.type && origFile.type.indexOf('png') !== -1) ? 'image/png' : 'image/jpeg';
+    var canvas = cropper.getCroppedCanvas({ maxWidth: 4096, maxHeight: 4096, imageSmoothingQuality: 'high' });
+    if (!canvas) { closeModal(); return; }
+    canvas.toBlob(function (blob) {
+      if (blob) setInputFile(input, blob, srcName);
+      closeModal();
+    }, outType, 0.92);
+  });
+
+  // Keep the originally selected file, just close
+  btnSkip.addEventListener('click', function () { closeModal(); });
+  btnCx.addEventListener('click', function () { clearAndClose(); });
+  btnX.addEventListener('click', function () { clearAndClose(); });
+  modal.addEventListener('click', function (e) { if (e.target === modal) clearAndClose(); });
+
+  // Cancel = discard the selection entirely
+  function clearAndClose() {
+    if (activeInput) {
+      try {
+        var dt = new DataTransfer();
+        activeInput.dataset.acmDone = '1';
+        activeInput.files = dt.files;
+        setTimeout(function () { if (activeInput) activeInput.dataset.acmDone = '0'; }, 0);
+      } catch (e) {}
+    }
+    closeModal();
+  }
+
+  // Delegated listener catches inputs added dynamically too
+  document.addEventListener('change', function (e) {
+    var input = e.target;
+    if (!shouldHandle(input)) return;
+    var file = input.files && input.files[0];
+    if (!file || !/^image\//i.test(file.type)) return;
+    if (typeof Cropper === 'undefined') return; // library failed to load -> upload as-is
+    openModalFor(input, file);
+  }, true);
+})();
+</script>
+
+<!-- ============================================================= -->
+<!--  ADMIN-WIDE THUMBNAIL EXCERPT — 50-word hard limit              -->
+<!--  Attaches to every  <input name="thumbnail_excerpt">  and       -->
+<!--  <input name="thumbnailexcerpt"> across the admin panel:        -->
+<!--    • Adds a "Limit: 50 words" hint next to the box              -->
+<!--    • Adds a live "X / 50 words" counter under the box           -->
+<!--    • HARD-CAPS input at 50 words (extra words are stripped on   -->
+<!--      input/paste so the 51st word can never be entered)         -->
+<!-- ============================================================= -->
+<style>
+  .te-side-note { display:inline-block; margin-left:10px; color:#6c757d; font-size:12px; font-style:italic; white-space:nowrap; }
+  .te-counter   { display:block; margin-top:4px; color:#6c757d; font-size:12px; }
+  .te-counter.is-near { color:#b58900; }
+  .te-counter.is-max  { color:#d9534f; font-weight:600; }
+</style>
+<script>
+(function () {
+  if (window.__teInit) return;
+  window.__teInit = true;
+
+  var LIMIT = 50;
+
+  function wordsOf(s) {
+    s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+    if (s === '') return [];
+    return s.split(' ');
+  }
+
+  function clampToLimit(value) {
+    var w = wordsOf(value);
+    if (w.length <= LIMIT) return null; // already within limit
+    // Preserve a single trailing space if the user just typed one (so the next
+    // keypress can finish a word naturally up to the cap).
+    var trailingSpace = /\s$/.test(value || '');
+    return w.slice(0, LIMIT).join(' ') + (trailingSpace ? ' ' : '');
+  }
+
+  function makeCounter(input) {
+    var c = document.createElement('small');
+    c.className = 'te-counter';
+    // Put the counter right after the input. If a wrapper around the input is
+    // a flex row, append to its parent's parent so it sits on a new line below.
+    var host = input.parentElement || input;
+    host.appendChild(c);
+    return c;
+  }
+
+  function makeSideNote(input) {
+    // Avoid double-adding when this runs more than once.
+    if (input.dataset.teSidenote === '1') return;
+    input.dataset.teSidenote = '1';
+    var note = document.createElement('span');
+    note.className = 'te-side-note';
+    note.textContent = '(Limit: ' + LIMIT + ' words)';
+    if (input.nextSibling) {
+      input.parentNode.insertBefore(note, input.nextSibling);
+    } else {
+      input.parentNode.appendChild(note);
+    }
+  }
+
+  function updateCounter(input, counter) {
+    var n = wordsOf(input.value).length;
+    counter.textContent = n + ' / ' + LIMIT + ' words';
+    counter.classList.toggle('is-max',  n >= LIMIT);
+    counter.classList.toggle('is-near', n >= Math.max(1, LIMIT - 10) && n < LIMIT);
+  }
+
+  function attach(input) {
+    if (!input || input.dataset.teBound === '1') return;
+    if (input.tagName !== 'INPUT' && input.tagName !== 'TEXTAREA') return;
+    input.dataset.teBound = '1';
+
+    // Tighten initial value if a server-side record already had > LIMIT words.
+    var clamped = clampToLimit(input.value);
+    if (clamped !== null) input.value = clamped;
+
+    makeSideNote(input);
+    var counter = makeCounter(input);
+    updateCounter(input, counter);
+
+    function enforce() {
+      var c = clampToLimit(input.value);
+      if (c !== null) {
+        // Preserve caret position relative to the end of the value when possible.
+        input.value = c;
+      }
+      updateCounter(input, counter);
+    }
+
+    // Handle every way text can change: typing, paste, drag-drop, autofill, IME.
+    input.addEventListener('input', enforce);
+    input.addEventListener('paste', function () { setTimeout(enforce, 0); });
+    input.addEventListener('drop',  function () { setTimeout(enforce, 0); });
+    input.addEventListener('change', enforce);
+    // Block adding more words via plain typing once at the cap (lets users still
+    // edit/delete inside existing text — only blocks expansion).
+    input.addEventListener('keydown', function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key && e.key.length === 1) {
+        var w = wordsOf(input.value).length;
+        if (w >= LIMIT) {
+          // Allow space/letters only if they're modifying inside an existing word.
+          // Simpler approach: block any keystroke that would *start* a new word
+          // (i.e. typing while the last char is whitespace, or pressing space).
+          var endsWithSpace = /\s$/.test(input.value);
+          if (e.key === ' ' || endsWithSpace) {
+            e.preventDefault();
+          }
+        }
+      }
+    });
+  }
+
+  function scan(root) {
+    var inputs = (root || document).querySelectorAll(
+      'input[name="thumbnail_excerpt"], input[name="thumbnailexcerpt"], textarea[name="thumbnail_excerpt"], textarea[name="thumbnailexcerpt"]'
+    );
+    for (var i = 0; i < inputs.length; i++) attach(inputs[i]);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { scan(document); });
+  } else {
+    scan(document);
+  }
+  // Re-scan after a moment to catch any inputs rendered late by other scripts.
+  setTimeout(function () { scan(document); }, 500);
+})();
+</script>
 </body>
 </html>

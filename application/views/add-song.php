@@ -1277,11 +1277,6 @@ include('inc/sidebar.php');
                                 clear: both;
                                 margin-top: 12px;
                             }
-                            #extraSongTranslations .translation-help-text {
-                                color: #d71919;
-                                font-style: italic;
-                                margin: 4px 0 8px;
-                            }
                         </style>
                         <div class="form-row song-translation-stack" style="display: flex; align-items: flex-start; margin-bottom: 18px;">
                             <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">Song Lyrics (Translation)</div>
@@ -1404,7 +1399,7 @@ include('inc/sidebar.php');
                             <div style="flex: 0 0 220px; padding-right: 18px; font-weight: 600;">Song Glossary</div>
                             <div style="flex: 0 0 auto;">
                                 <div class="input-btn-group" style="display: inline-flex; align-items: center; gap: 8px;">
-                                    <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="songglossary[]" id="songglossary" data-placeholder="Select Glossary Keywords">
+                                    <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="songglossary[]" id="songglossary" data-placeholder="Select Glossary Term">
                                         <?php foreach ($glossary_word_rows as $gw) : ?>
                                             <option value="<?= (int)$gw->id ?>" <?= in_array((string)$gw->id, $selected_song_glossary, true) ? 'selected' : '' ?>><?= htmlspecialchars((string)$gw->word_transliteration) ?></option>
                                         <?php endforeach; ?>
@@ -1443,7 +1438,7 @@ include('inc/sidebar.php');
                                                 <div class="form-group" style="margin-top: 8px;">
                                                     <label style="display:flex; align-items:center; gap:8px; margin-bottom:0;">
                                                         <input type="checkbox" id="newGlossaryIsGlossary" value="1" style="width:auto; margin:0;">
-                                                        <span>Is this a Glossary Word?</span>
+                                                        <span>Add to Full Glossary</span>
                                                     </label>
                                                 </div>
                                             </div>
@@ -2316,7 +2311,6 @@ include('inc/sidebar.php');
                                     </div>
                                 </div>
                             </div>
-                        </div>
                         </div>
 
                         <label>Meta Data </label>
@@ -3594,7 +3588,6 @@ songFormEl.addEventListener('submit', function(e) {
                 wrapper.id = blockId;
                 wrapper.className = 'translation-block';
                 wrapper.innerHTML = ''
-                    + '<div class="translation-help-text">Please deselect translators before deleting translation</div>'
                     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
                     + '  <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="extra_translator[' + extraIndex + '][]" id="' + selectId + '" data-placeholder="Select Translators" data-select2-search-placeholder="Select Translators">'
                     +        buildTranslatorOptionsHtml()
@@ -3707,24 +3700,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         $el.data('ms-initial-vals', $el.val() ? $el.val().slice() : []);
 
-                        // Helper container = action row (Select All/None/Reset) + search input
+                        // Helper container = Reset button + search input.
+                        // "Select All" / "Select None" intentionally omitted (UX request).
                         var $helper = $('<li class="ms-helper-container"></li>');
                         var $row = $('<div class="ms-action-row"></div>');
-                        var $all = $('<button type="button" class="ms-action-btn">Select All</button>');
-                        var $none = $('<button type="button" class="ms-action-btn">Select None</button>');
                         var $reset = $('<button type="button" class="ms-action-btn">Reset</button>');
-                        $all.on('click', function(e) {
-                            e.preventDefault(); e.stopPropagation();
-                            $el.multiselect('selectAll', false);
-                            $el.multiselect('updateButtonText');
-                            $el.trigger('change');
-                        });
-                        $none.on('click', function(e) {
-                            e.preventDefault(); e.stopPropagation();
-                            $el.multiselect('deselectAll', false);
-                            $el.multiselect('updateButtonText');
-                            $el.trigger('change');
-                        });
                         $reset.on('click', function(e) {
                             e.preventDefault(); e.stopPropagation();
                             var initial = $el.data('ms-initial-vals') || [];
@@ -3733,17 +3713,27 @@ document.addEventListener('DOMContentLoaded', function() {
                             $el.multiselect('updateButtonText');
                             $el.trigger('change');
                         });
-                        $row.append($all).append($none).append($reset);
+                        $row.append($reset);
                         $helper.append($row);
 
                         var $search = $('<input type="text" class="ms-search-input" placeholder="Search..." />');
                         $search.on('click', function(e) { e.stopPropagation(); });
                         $search.on('keydown', function(e) { e.stopPropagation(); });
+                        // First-name basis: match the start of the label OR the start of any
+                        // whitespace-separated word inside it. So "das" matches "Kabir Das"
+                        // and "kab" matches "Kabir Das", but "abir" does not match.
                         $search.on('input', function() {
-                            var q = $(this).val().toLowerCase();
+                            var q = $(this).val().toLowerCase().trim();
                             $dropdown.find('li').not('.ms-helper-container').each(function() {
-                                var txt = $(this).text().toLowerCase();
-                                $(this).toggle(txt.indexOf(q) !== -1);
+                                var txt = $(this).text().toLowerCase().trim();
+                                var ok = q === '' || txt.indexOf(q) === 0;
+                                if (!ok && q) {
+                                    var words = txt.split(/\s+/);
+                                    for (var w = 0; w < words.length; w++) {
+                                        if (words[w].indexOf(q) === 0) { ok = true; break; }
+                                    }
+                                }
+                                $(this).toggle(ok);
                             });
                         });
                         $helper.append($search);
@@ -3887,7 +3877,6 @@ document.addEventListener('DOMContentLoaded', function () {
         wrapper.id = blockId;
         wrapper.className = 'translation-block';
         wrapper.innerHTML = ''
-            + '<div class="translation-help-text">Please deselect translators before deleting translation</div>'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
             + '  <select class="form-control select2 col-md-4" multiple="multiple" data-skip-select2="true" name="extra_translator_fb[' + extraIndex + '][]" id="' + selectId + '" data-placeholder="Select Translators" data-select2-search-placeholder="Select Translators">'
             +        buildTranslatorOptionsHtml()

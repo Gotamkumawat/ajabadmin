@@ -73,7 +73,31 @@ class CoupletController extends CI_Controller {
         $english_translation_text = $this->input->post('english_translation_text');
         $extra_translation_text = $this->input->post('extra_translation_text');
         $note_text = $this->input->post('note_text');
-        $glossary = $this->input->post('glossary');
+        // Poem Glossary now matches Song Glossary UI: a multi-select of word IDs.
+        // DB column `couplet.glossary` is kept as free TEXT for backward compatibility,
+        // so we resolve the selected IDs to their `word.word_transliteration` and store
+        // them comma-separated. Any unmatched legacy free-text is preserved via
+        // `glossary_extra_text` (hidden field rendered in add-couplet.php).
+        $glossary_raw = $this->input->post('glossary');
+        $glossary_extra = trim((string) $this->input->post('glossary_extra_text'));
+        $glossary_parts = [];
+        if (is_array($glossary_raw)) {
+            $ids = array_values(array_filter(array_map(function ($v) { return (int) $v; }, $glossary_raw), function ($v) { return $v > 0; }));
+            if (!empty($ids) && $this->db->table_exists('word')) {
+                $rows = $this->db->select('id, word_transliteration')->from('word')->where_in('id', $ids)->get()->result();
+                // Preserve user's selection order
+                $byId = [];
+                foreach ($rows as $r) { $byId[(int) $r->id] = trim((string) $r->word_transliteration); }
+                foreach ($ids as $id) {
+                    if (!empty($byId[$id])) { $glossary_parts[] = $byId[$id]; }
+                }
+            }
+        } elseif ($glossary_raw !== null && trim((string) $glossary_raw) !== '') {
+            // Backward compat: if some caller still posts a single string, keep it as-is.
+            $glossary_parts[] = trim((string) $glossary_raw);
+        }
+        if ($glossary_extra !== '') { $glossary_parts[] = $glossary_extra; }
+        $glossary = implode(', ', array_values(array_unique(array_filter(array_map('trim', $glossary_parts), 'strlen'))));
         $meta_title = $this->input->post('meta_title');
         $meta_keywords = $this->input->post('meta_keywords');
         $meta_description = $this->input->post('meta_description');

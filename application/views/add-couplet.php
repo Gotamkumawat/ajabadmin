@@ -780,11 +780,6 @@ if (!function_exists('couplet_parse_id_list')) {
                                     width: 100%;
                                     margin-bottom: 16px;
                                 }
-                                .translation-help-text {
-                                    color: #d71919;
-                                    font-style: italic;
-                                    margin: 4px 0 8px;
-                                }
                             </style>
                             <div class="row">
                                 <div class="col-12">
@@ -846,11 +841,256 @@ if (!function_exists('couplet_parse_id_list')) {
                             </div>
                         </div>
 
+                        <?php
+                        // ============================================================
+                        // Poem Glossary — Song Glossary style: multi-select from `word`
+                        // table + "Add New" + "Edit" modal. DB column `couplet.glossary`
+                        // is kept as free TEXT for backward compatibility: on save the
+                        // selected words' transliterations are stored comma-separated.
+                        // ============================================================
+                        $couplet_glossary_raw = isset($couplet['glossary']) ? trim((string) $couplet['glossary']) : '';
+
+                        $glossary_word_rows = $this->db->table_exists('word')
+                            ? $this->db->query("SELECT id, word_transliteration FROM word ORDER BY LOWER(TRIM(COALESCE(word_transliteration,''))) ASC, id ASC")->result()
+                            : [];
+
+                        // Map transliteration -> id (lowercased & trimmed) for preselect matching
+                        $glossary_translit_to_id = [];
+                        foreach ($glossary_word_rows as $gw) {
+                            $key = mb_strtolower(trim((string) $gw->word_transliteration));
+                            if ($key !== '' && !isset($glossary_translit_to_id[$key])) {
+                                $glossary_translit_to_id[$key] = (string) (int) $gw->id;
+                            }
+                        }
+
+                        // Split existing free-text glossary on commas / newlines, match to words
+                        $selected_couplet_glossary = [];
+                        $unmatched_glossary_tokens = [];
+                        if ($couplet_glossary_raw !== '') {
+                            $tokens = preg_split('/[,\n]+/u', $couplet_glossary_raw);
+                            foreach ($tokens as $tok) {
+                                $tok = trim((string) $tok);
+                                if ($tok === '') continue;
+                                $k = mb_strtolower($tok);
+                                if (isset($glossary_translit_to_id[$k])) {
+                                    $selected_couplet_glossary[$glossary_translit_to_id[$k]] = true;
+                                } else {
+                                    $unmatched_glossary_tokens[] = $tok;
+                                }
+                            }
+                        }
+                        $selected_couplet_glossary = array_keys($selected_couplet_glossary);
+                        ?>
                         <div class="row">
                             <div class="col-12">
-                                <div class="form-group">
-                                    <label>Poem Glossary</label>
-                                    <textarea id="glossary" name="glossary" class="form-control"><?= isset($couplet['glossary']) ? $couplet['glossary'] : ''; ?></textarea>
+                                <div class="form-group" style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                                    <label style="margin-bottom:0;">Poem Glossary</label>
+                                    <div class="input-btn-group" style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="glossary[]" id="coupletglossary" data-placeholder="Select Glossary Term">
+                                            <?php foreach ($glossary_word_rows as $gw): ?>
+                                                <option value="<?= (int) $gw->id ?>" <?= in_array((string) $gw->id, $selected_couplet_glossary, true) ? 'selected' : '' ?>><?= htmlspecialchars((string) $gw->word_transliteration) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="button" class="btn btn-sm btn-success" id="addGlossaryWordBtn" style="white-space:nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-sm btn-primary ml-1" id="editGlossaryWordBtn" style="white-space:nowrap;">Edit</button>
+                                    </div>
+                                    <?php if (!empty($unmatched_glossary_tokens)): ?>
+                                        <!-- Preserve any free-text glossary entries that don't match a word row, so editing doesn't lose them. -->
+                                        <input type="hidden" name="glossary_extra_text" value="<?= htmlspecialchars(implode(', ', $unmatched_glossary_tokens)) ?>">
+                                        <small class="text-muted" style="flex-basis:100%;">Existing free-text entries kept as-is: <em><?= htmlspecialchars(implode(', ', $unmatched_glossary_tokens)) ?></em></small>
+                                    <?php endif; ?>
+
+                                    <!-- Add New Glossary Word Modal (reuses SongController/ajax_create_glossary_word) -->
+                                    <style>
+                                        /* Override the page-wide flex .form-group rule inside this modal so labels,
+                                           inputs and textareas stack normally and remain editable. */
+                                        #addGlossaryWordModal .form-group { display: block !important; align-items: initial !important; }
+                                        #addGlossaryWordModal .form-group > label { flex: none !important; max-width: none !important; width: auto !important; display: block !important; padding-right: 0 !important; margin-bottom: 6px !important; }
+                                        #addGlossaryWordModal .form-group > *:not(label) { flex: none !important; width: 100% !important; }
+                                        #addGlossaryWordModal .form-control { display: block; width: 100%; }
+                                        #addGlossaryWordModal { z-index: 100050; }
+                                        .modal-backdrop.show { z-index: 100040; }
+                                    </style>
+                                    <div class="modal fade" id="addGlossaryWordModal" tabindex="-1" role="dialog" aria-labelledby="addGlossaryWordModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false" data-bs-backdrop="static" data-bs-keyboard="false">
+                                        <div class="modal-dialog" role="document">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title" id="addGlossaryWordModalLabel">Add New Glossary Word</h5>
+                                                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <div class="form-group" style="display:block;">
+                                                        <label>Original</label>
+                                                        <input type="text" class="form-control" id="newGlossaryOriginal" placeholder="Enter Original">
+                                                    </div>
+                                                    <div class="form-group" style="display:block;">
+                                                        <label>Translation</label>
+                                                        <input type="text" class="form-control" id="newGlossaryTranslation" placeholder="Enter Translation">
+                                                    </div>
+                                                    <div class="form-group" style="display:block;">
+                                                        <label>Transliteration</label>
+                                                        <input type="text" class="form-control" id="newGlossaryTransliteration" placeholder="Enter Transliteration">
+                                                    </div>
+                                                    <div class="form-group" style="display:block;">
+                                                        <label>Word Meaning</label>
+                                                        <textarea class="form-control" id="newGlossaryMeaning" rows="3" placeholder="Enter word meaning"></textarea>
+                                                    </div>
+                                                    <div class="form-group" style="display:block; margin-top:8px;">
+                                                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:0;">
+                                                            <input type="checkbox" id="newGlossaryIsGlossary" value="1" style="width:auto; margin:0;">
+                                                            <span>Add to Full Glossary</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                                                    <button type="button" class="btn btn-primary" id="saveGlossaryWordBtn">Save</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <script>
+                                    (function () {
+                                        function showModal(modal) {
+                                            try {
+                                                if (window.bootstrap && bootstrap.Modal) { bootstrap.Modal.getOrCreateInstance(modal).show(); return; }
+                                                if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('show'); return; }
+                                            } catch (e) {}
+                                            modal.classList.add('show');
+                                            modal.style.display = 'block';
+                                            document.body.classList.add('modal-open');
+                                            if (!document.getElementById('gw-modal-backdrop')) {
+                                                var bd = document.createElement('div');
+                                                bd.id = 'gw-modal-backdrop';
+                                                bd.className = 'modal-backdrop fade show';
+                                                document.body.appendChild(bd);
+                                            }
+                                        }
+                                        function hideModal(modal) {
+                                            try {
+                                                if (window.bootstrap && bootstrap.Modal) {
+                                                    var inst = bootstrap.Modal.getInstance(modal);
+                                                    if (inst) { inst.hide(); return; }
+                                                }
+                                                if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('hide'); return; }
+                                            } catch (e) {}
+                                            modal.classList.remove('show');
+                                            modal.style.display = 'none';
+                                            document.body.classList.remove('modal-open');
+                                            var bd = document.getElementById('gw-modal-backdrop');
+                                            if (bd) bd.remove();
+                                        }
+                                        function init() {
+                                            var btn = document.getElementById('addGlossaryWordBtn');
+                                            var modal = document.getElementById('addGlossaryWordModal');
+                                            var saveBtn = document.getElementById('saveGlossaryWordBtn');
+                                            var sel = document.getElementById('coupletglossary');
+                                            if (!btn || !modal || !saveBtn || !sel) { setTimeout(init, 200); return; }
+                                            modal.querySelectorAll('[data-dismiss="modal"], .close, .btn-secondary').forEach(function (b) {
+                                                b.addEventListener('click', function (e) { e.preventDefault(); hideModal(modal); });
+                                            });
+                                            btn.onclick = function () {
+                                                ['newGlossaryOriginal','newGlossaryTranslation','newGlossaryTransliteration','newGlossaryMeaning'].forEach(function (id) {
+                                                    var f = document.getElementById(id); if (f) f.value = '';
+                                                });
+                                                var cb = document.getElementById('newGlossaryIsGlossary'); if (cb) cb.checked = false;
+                                                showModal(modal);
+                                                setTimeout(function () { var f = document.getElementById('newGlossaryTransliteration'); if (f) f.focus(); }, 200);
+                                            };
+                                            saveBtn.onclick = async function () {
+                                                var orig     = (document.getElementById('newGlossaryOriginal').value || '').trim();
+                                                var trans    = (document.getElementById('newGlossaryTranslation').value || '').trim();
+                                                var translit = (document.getElementById('newGlossaryTransliteration').value || '').trim();
+                                                var meaning  = (document.getElementById('newGlossaryMeaning').value || '').trim();
+                                                var isGlossary = !!(document.getElementById('newGlossaryIsGlossary') && document.getElementById('newGlossaryIsGlossary').checked);
+                                                if (!translit) { alert('Transliteration is required'); return; }
+                                                saveBtn.disabled = true;
+                                                try {
+                                                    var fd = new URLSearchParams();
+                                                    fd.append('word_original', orig);
+                                                    fd.append('word_translation', trans);
+                                                    fd.append('word_transliteration', translit);
+                                                    fd.append('glossary_meaning', meaning);
+                                                    fd.append('is_glossary_word', isGlossary ? '1' : '0');
+                                                    // Reuse the existing Song endpoint - it just inserts into `word`.
+                                                    var res = await fetch('<?= base_url('SongController/ajax_create_glossary_word') ?>', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                                        body: fd.toString()
+                                                    });
+                                                    var data = await res.json();
+                                                    if (data && data.status === 'success' && data.id) {
+                                                        var opt = document.createElement('option');
+                                                        opt.value = data.id;
+                                                        opt.text = data.label || translit;
+                                                        opt.selected = true;
+                                                        sel.add(opt);
+                                                        if (window.__adminRefreshSelect) {
+                                                            window.__adminRefreshSelect('#coupletglossary', String(data.id));
+                                                        } else if (window.jQuery) {
+                                                            $('#coupletglossary').trigger('change');
+                                                        }
+                                                        hideModal(modal);
+                                                        if (window.Swal) Swal.fire({ icon:'success', title:'Glossary word added!', timer:1200, showConfirmButton:false });
+                                                    } else {
+                                                        alert('Failed: ' + (data && data.message ? data.message : 'Unknown error'));
+                                                    }
+                                                } catch (e) {
+                                                    alert('Error: ' + e.message);
+                                                } finally {
+                                                    saveBtn.disabled = false;
+                                                }
+                                            };
+                                        }
+                                        if (document.readyState === 'loading') {
+                                            document.addEventListener('DOMContentLoaded', init);
+                                        } else {
+                                            init();
+                                        }
+
+                                        // Wire the "Edit" button to the admin-wide helper (same as Song page).
+                                        // Bind directly on the button (no DOMContentLoaded wrap) so it works whether
+                                        // the page is still loading or already loaded. The helper itself lives in
+                                        // footer.php which loads after this script, so we look it up at *click* time.
+                                        function wireGlossaryEdit() {
+                                            var editBtn = document.getElementById('editGlossaryWordBtn');
+                                            if (!editBtn) { setTimeout(wireGlossaryEdit, 200); return; }
+                                            if (editBtn.dataset.gwEditBound === '1') return;
+                                            editBtn.dataset.gwEditBound = '1';
+                                            editBtn.addEventListener('click', function (e) {
+                                                // Stop the click from bubbling to ancestors — otherwise the same
+                                                // event reaches the body/backdrop and Bootstrap closes the modal
+                                                // we just opened ("opens and instantly closes" symptom).
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                if (typeof window.__adminEditOption !== 'function') {
+                                                    alert('Edit helper not loaded yet. Please try again in a moment.');
+                                                    return;
+                                                }
+                                                // Defer opening to the next tick so the originating click has fully
+                                                // finished propagating before Bootstrap registers its outside-click
+                                                // listeners on the freshly shown modal.
+                                                setTimeout(function () {
+                                                    window.__adminEditOption({
+                                                        selectId: '#coupletglossary',
+                                                        modalId: '#addGlossaryWordModal',
+                                                        addSaveBtnId: '#saveGlossaryWordBtn',
+                                                        updateUrl: '<?= base_url('SongController/ajax_update_glossary_word') ?>',
+                                                        editTitle: 'Edit Glossary Word',
+                                                        fields: [
+                                                            { inputId: '#newGlossaryOriginal',        postKey: 'word_original' },
+                                                            { inputId: '#newGlossaryTranslation',     postKey: 'word_translation' },
+                                                            { inputId: '#newGlossaryTransliteration', postKey: 'word_transliteration', primary: true },
+                                                            { inputId: '#newGlossaryMeaning',         postKey: 'glossary_meaning' }
+                                                        ]
+                                                    });
+                                                }, 0);
+                                            });
+                                        }
+                                        wireGlossaryEdit();
+                                    })();
+                                    </script>
                                 </div>
                             </div>
                         </div>
@@ -2236,7 +2476,6 @@ document.getElementById('addAttributedPoet').addEventListener('click', function(
         wrapper.style.border = '1px solid #e5e5e5';
         wrapper.style.borderRadius = '6px';
         wrapper.innerHTML = ''
-            + '<div class="translation-help-text">Please deselect translators before deleting translation</div>'
             + '<div class="translation-control translation-select-row">'
             + '  <select class="form-control select2 col-md-4" multiple="multiple" name="extra_translator[' + extraIndex + '][]" id="' + selectId + '" data-placeholder="Select Translators">'
             +        buildTranslatorOptionsHtml()

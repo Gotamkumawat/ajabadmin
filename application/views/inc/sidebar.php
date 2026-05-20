@@ -24,12 +24,6 @@
             <p>List</p>
           </a>
         </li>
-        <li class="nav-item">
-          <a href="<?php echo base_url('import-panel'); ?>" class="nav-link">
-            <i class="nav-icon fas fa-database"></i>
-            <p>Import Data</p>
-          </a>
-        </li>
       </ul>
     </nav>
   </div>
