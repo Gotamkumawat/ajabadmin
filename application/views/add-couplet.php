@@ -587,7 +587,7 @@ if (!function_exists('couplet_parse_id_list')) {
                             <div class="col-12">
                                 <div class="form-group">
                                     <label>⊙ Transliteration <span style="color:red">*</span></label>
-                                    <input type="text" id="couplet_transliteration" name="couplet_transliteration" class="form-control col-md-4" value="<?= isset($couplet['couplet_transliteration']) ? htmlspecialchars($couplet['couplet_transliteration']) : ''; ?>" placeholder="Enter Poem Title - Transliteration" required>
+                                    <input type="text" id="couplet_translation" name="couplet_translation" class="form-control col-md-4" value="<?= isset($couplet['couplet_translation']) ? htmlspecialchars($couplet['couplet_translation']) : ''; ?>" placeholder="Enter Poem Title - Translation" required>
                                 </div>
                             </div>
                         </div>
@@ -596,7 +596,8 @@ if (!function_exists('couplet_parse_id_list')) {
                             <div class="col-12">
                                 <div class="form-group">
                                     <label>⊙ Translation <span style="color:red">*</span></label>
-                                    <input type="text" id="couplet_translation" name="couplet_translation" class="form-control col-md-4" value="<?= isset($couplet['couplet_translation']) ? htmlspecialchars($couplet['couplet_translation']) : ''; ?>" placeholder="Enter Poem Title - Translation" required>
+                                    <input type="text" id="couplet_transliteration" name="couplet_transliteration" class="form-control col-md-4" value="<?= isset($couplet['couplet_transliteration']) ? htmlspecialchars($couplet['couplet_transliteration']) : ''; ?>" placeholder="Enter Poem Title - Transliteration" required>
+                                    
                                 </div>
                             </div>
                         </div>
@@ -650,6 +651,7 @@ if (!function_exists('couplet_parse_id_list')) {
                                         </select>
                                         <button type="button" class="btn btn-success btn-sm" id="addPoetBtn">Add New</button>
                                         <button type="button" class="btn btn-primary btn-sm ml-1" id="editPoetBtn">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-sm ml-1" id="deletePoetBtn">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -690,6 +692,7 @@ if (!function_exists('couplet_parse_id_list')) {
                                         </select>
                                         <button type="button" class="btn btn-success btn-sm" id="addAttributedPoetBtn">Add New</button>
                                         <button type="button" class="btn btn-primary btn-sm ml-1" id="editAttributedPoetBtn">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteAttributedPoetBtn">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -818,6 +821,7 @@ if (!function_exists('couplet_parse_id_list')) {
                                             </select>
                                             <button type="button" class="btn btn-success btn-sm" id="addTranslatorBtn">Add New</button>
                                             <button type="button" class="btn btn-primary btn-sm ml-1" id="editTranslatorBtn">Edit</button>
+                                            <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteTranslatorBtn">Delete</button>
                                         </div>
                                         <div class="translation-control translation-editor-wrap">
                                             <textarea id="english_translation_text" name="english_translation_text" class="form-control"><?= isset($couplet['english_translation_text']) ? htmlspecialchars($couplet['english_translation_text']) : ''; ?></textarea>
@@ -893,6 +897,7 @@ if (!function_exists('couplet_parse_id_list')) {
                                         </select>
                                         <button type="button" class="btn btn-sm btn-success" id="addGlossaryWordBtn" style="white-space:nowrap;">Add New</button>
                                         <button type="button" class="btn btn-sm btn-primary ml-1" id="editGlossaryWordBtn" style="white-space:nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger ml-1" id="deleteGlossaryWordBtn" style="white-space:nowrap;">Delete</button>
                                     </div>
                                     <?php if (!empty($unmatched_glossary_tokens)): ?>
                                         <!-- Preserve any free-text glossary entries that don't match a word row, so editing doesn't lose them. -->
@@ -1076,7 +1081,8 @@ if (!function_exists('couplet_parse_id_list')) {
                                                         selectId: '#coupletglossary',
                                                         modalId: '#addGlossaryWordModal',
                                                         addSaveBtnId: '#saveGlossaryWordBtn',
-                                                        updateUrl: '<?= base_url('SongController/ajax_update_glossary_word') ?>',
+                                                        updateUrl:  '<?= base_url('SongController/ajax_update_glossary_word') ?>',
+                                                        prefillUrl: '<?= base_url('song/ajax_get_glossary_word') ?>',
                                                         editTitle: 'Edit Glossary Word',
                                                         fields: [
                                                             { inputId: '#newGlossaryOriginal',        postKey: 'word_original' },
@@ -1211,6 +1217,7 @@ if (!function_exists('couplet_parse_id_list')) {
                                         </select>
                                         <button type="button" class="btn btn-sm btn-success ml-2" id="addNewKeywordBtn" style="white-space:nowrap;">Add New</button>
                                         <button type="button" class="btn btn-sm btn-primary ml-1" id="editKeywordBtn" style="white-space:nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger ml-1" id="deleteKeywordBtn" style="white-space:nowrap;">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -1385,7 +1392,16 @@ if (!function_exists('couplet_parse_id_list')) {
                                                 <label>Transliteration</label>
                                                 <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword Transliteration">
                                             </div>
+                                            <div class="form-group">
+                                                <label>Word Meaning</label>
+                                                <textarea id="newKeywordMeaning" class="form-control" rows="3" placeholder="Enter word meaning"></textarea>
+                                            </div>
                                         </div>
+                                        <style>
+                                            #addNewKeywordModal .form-group { display:block !important; align-items:initial !important; }
+                                            #addNewKeywordModal .form-group > label { display:block !important; flex:none !important; max-width:none !important; width:auto !important; margin-bottom:6px !important; padding-right:0 !important; }
+                                            #addNewKeywordModal .form-group > *:not(label) { width:100% !important; flex:none !important; }
+                                        </style>
                                         <div class="modal-footer">
                                             <button class="btn-secondary" id="cancelAddNewKeyword">Cancel</button>
                                             <button class="btn-success" id="addKeywordConfirm">Add</button>
@@ -1515,40 +1531,66 @@ if (!function_exists('couplet_parse_id_list')) {
                                     var addKeywordConfirm = document.getElementById('addKeywordConfirm');
                                     var newKeywordTransliteration = document.getElementById('newKeywordTransliteration');
                                     var relatedkeywordsSelect = document.getElementById('relatedkeywords');
+                                    function __coupletKwRead() {
+                                        return {
+                                            word_original:        ((document.getElementById('newKeywordOriginal')        || {}).value || '').trim(),
+                                            word_translation:     ((document.getElementById('newKeywordTranslation')     || {}).value || '').trim(),
+                                            word_transliteration: ((document.getElementById('newKeywordTransliteration') || {}).value || '').trim(),
+                                            glossary_meaning:     ((document.getElementById('newKeywordMeaning')         || {}).value || '').trim()
+                                        };
+                                    }
+                                    function __coupletKwClear() {
+                                        ['newKeywordOriginal','newKeywordTranslation','newKeywordTransliteration','newKeywordMeaning'].forEach(function (id) {
+                                            var el = document.getElementById(id); if (el) el.value = '';
+                                        });
+                                    }
                                     if (addNewKeywordBtn && addNewKeywordModal && addKeywordConfirm && newKeywordTransliteration && relatedkeywordsSelect) {
                                         addNewKeywordBtn.onclick = function() {
+                                            __coupletKwClear();
                                             addNewKeywordModal.classList.add('show');
-                                            newKeywordTransliteration.value = '';
                                             setTimeout(function() { newKeywordTransliteration.focus(); }, 300);
                                         };
                                         document.getElementById('closeAddNewKeyword').onclick = function() { addNewKeywordModal.classList.remove('show'); };
                                         document.getElementById('cancelAddNewKeyword').onclick = function() { addNewKeywordModal.classList.remove('show'); };
                                         addKeywordConfirm.onclick = async function() {
-                                            var newKeyword = newKeywordTransliteration.value.trim();
-                                            if (!newKeyword) {
-                                                alert('Please enter a keyword!');
+                                            var fields = __coupletKwRead();
+                                            if (!fields.word_transliteration) {
+                                                alert('Transliteration is required!');
                                                 return;
                                             }
                                             addKeywordConfirm.disabled = true;
                                             try {
+                                                var body = new URLSearchParams();
+                                                Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
                                                 var res = await fetch('<?= base_url('SongController/ajax_create_keyword') ?>', {
                                                     method: 'POST',
                                                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                                    body: 'word_transliteration=' + encodeURIComponent(newKeyword)
+                                                    body: body.toString()
                                                 });
                                                 var data = await res.json();
-                                                if (data && data.status === 'success') {
-                                                    var option = document.createElement('option');
-                                                    option.value = data.keyword_id || data.id;
-                                                    option.text = data.word_transliteration || newKeyword;
-                                                    option.selected = true;
-                                                    relatedkeywordsSelect.add(option);
-                                                    if (window.jQuery && $('#relatedkeywords').length) $('#relatedkeywords').trigger('change');
+                                                if (data && (data.status === 'success' || data.success)) {
+                                                    var newId = data.keyword_id || data.id;
+                                                    var existingOpt = Array.from(relatedkeywordsSelect.options).find(function (o) { return String(o.value) === String(newId); });
+                                                    if (existingOpt) {
+                                                        existingOpt.text = data.word_transliteration || fields.word_transliteration;
+                                                        existingOpt.selected = true;
+                                                    } else {
+                                                        var option = document.createElement('option');
+                                                        option.value = newId;
+                                                        option.text = data.word_transliteration || fields.word_transliteration;
+                                                        option.selected = true;
+                                                        relatedkeywordsSelect.add(option);
+                                                    }
+                                                    if (window.__adminRefreshSelect) {
+                                                        window.__adminRefreshSelect('#relatedkeywords', String(newId));
+                                                    } else if (window.jQuery && $('#relatedkeywords').length) {
+                                                        $('#relatedkeywords').trigger('change');
+                                                    }
                                                     addNewKeywordModal.classList.remove('show');
-                                                    newKeywordTransliteration.value = '';
-                                                    if (window.Swal) Swal.fire({icon:'success',title:'Success',text:data.message || 'Keyword added!',timer:1200,showConfirmButton:false});
+                                                    __coupletKwClear();
+                                                    if (window.Swal) Swal.fire({icon:'success',title:'Success',text:data.message || 'Keyword saved!',timer:1200,showConfirmButton:false});
                                                 } else {
-                                                    alert((data && data.message) ? data.message : 'Failed to add keyword!');
+                                                    alert((data && data.message) ? data.message : 'Failed to save keyword!');
                                                 }
                                             } catch (e) {
                                                 alert('Error: ' + e.message);
@@ -2299,38 +2341,42 @@ document.getElementById('addPoetModal').addEventListener('click', function(e) {
 document.getElementById('addPoet').addEventListener('click', function() {
     const name = document.getElementById('addPoetName').value.trim();
     const hyperlink = document.getElementById('addPoetUrl').value.trim();
-    if (name) {
-        fetch('<?php echo base_url("person/ajax-create"); ?>', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, hyperlink: hyperlink })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const select = document.getElementById('poet');
-                const option = new Option(data.fullName, data.id);
-                select.appendChild(option);
-                $(select).val([...$(select).val() || [], data.id]).trigger('change');
-                document.getElementById('addPoetModal').classList.remove('show');
-                document.getElementById('addPoetName').value = '';
-                document.getElementById('addPoetUrl').value = '';
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Success',
-                    text: 'Poet added successfully!',
-                    confirmButtonText: 'OK',
-                    customClass: { confirmButton: 'custom-missing-ok-btn' },
-                    buttonsStyling: false
-                });
-            } else {
-                alert('Error: ' + (data.message || 'Failed to add poet'));
-            }
-        })
-        .catch(err => alert('Error: ' + err.message));
-    } else {
-        alert("Please enter a name.");
-    }
+    if (!name) { alert("Please enter a name."); return; }
+    // CodeIgniter's $this->input->post() reads x-www-form-urlencoded data, not JSON.
+    // Sending JSON would arrive as empty on the server → "Name is required" error.
+    const body = new URLSearchParams();
+    body.append('name', name);
+    body.append('hyperlink', hyperlink);
+    body.append('type_id', '2'); // Poet
+    fetch('<?php echo base_url("person/ajax-create"); ?>', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data && data.success) {
+            const select = document.getElementById('poet');
+            const option = new Option(data.fullName || name, data.id);
+            select.appendChild(option);
+            $(select).val([...($(select).val() || []), String(data.id)]).trigger('change');
+            if (window.__adminRefreshSelect) window.__adminRefreshSelect('#poet', String(data.id));
+            document.getElementById('addPoetModal').classList.remove('show');
+            document.getElementById('addPoetName').value = '';
+            document.getElementById('addPoetUrl').value = '';
+            Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: 'Poet added successfully!',
+                confirmButtonText: 'OK',
+                customClass: { confirmButton: 'custom-missing-ok-btn' },
+                buttonsStyling: false
+            });
+        } else {
+            alert('Error: ' + ((data && data.message) || 'Failed to add poet'));
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
 });
 
 // Attributed Poet Modal
@@ -2351,38 +2397,40 @@ document.getElementById('addAttributedPoetModal').addEventListener('click', func
 document.getElementById('addAttributedPoet').addEventListener('click', function() {
     const name = document.getElementById('addAttributedPoetName').value.trim();
     const hyperlink = document.getElementById('addAttributedPoetUrl').value.trim();
-    if (name) {
-        fetch('<?php echo base_url("person/ajax-create"); ?>', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, hyperlink: hyperlink })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const select = document.getElementById('attributed_poet');
-                const option = new Option(data.fullName, data.id);
-                select.appendChild(option);
-                $(select).val([...$(select).val() || [], data.id]).trigger('change');
-                document.getElementById('addAttributedPoetModal').classList.remove('show');
-                document.getElementById('addAttributedPoetName').value = '';
-                document.getElementById('addAttributedPoetUrl').value = '';
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Success',
-                    text: 'Attributed Poet added successfully!',
-                    confirmButtonText: 'OK',
-                    customClass: { confirmButton: 'custom-missing-ok-btn' },
-                    buttonsStyling: false
-                });
-            } else {
-                alert('Error: ' + (data.message || 'Failed to add attributed poet'));
-            }
-        })
-        .catch(err => alert('Error: ' + err.message));
-    } else {
-        alert("Please enter a name.");
-    }
+    if (!name) { alert("Please enter a name."); return; }
+    const body = new URLSearchParams();
+    body.append('name', name);
+    body.append('hyperlink', hyperlink);
+    body.append('type_id', '2'); // Poet (Attributed Poet is also a poet entry)
+    fetch('<?php echo base_url("person/ajax-create"); ?>', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data && data.success) {
+            const select = document.getElementById('attributed_poet');
+            const option = new Option(data.fullName || name, data.id);
+            select.appendChild(option);
+            $(select).val([...($(select).val() || []), String(data.id)]).trigger('change');
+            if (window.__adminRefreshSelect) window.__adminRefreshSelect('#attributed_poet', String(data.id));
+            document.getElementById('addAttributedPoetModal').classList.remove('show');
+            document.getElementById('addAttributedPoetName').value = '';
+            document.getElementById('addAttributedPoetUrl').value = '';
+            Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: 'Attributed Poet added successfully!',
+                confirmButtonText: 'OK',
+                customClass: { confirmButton: 'custom-missing-ok-btn' },
+                buttonsStyling: false
+            });
+        } else {
+            alert('Error: ' + ((data && data.message) || 'Failed to add attributed poet'));
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
 });
 
 // Translator Modal
@@ -2412,19 +2460,24 @@ document.getElementById('addAttributedPoet').addEventListener('click', function(
     addTranslator.addEventListener('click', function() {
         const name = document.getElementById('addTranslatorName').value.trim();
         const hyperlink = document.getElementById('addTranslatorUrl').value.trim();
-        if (name) {
-            fetch('<?php echo base_url("person/ajax-create"); ?>', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, hyperlink: hyperlink })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
+        if (!name) { alert("Please enter a name."); return; }
+        const body = new URLSearchParams();
+        body.append('name', name);
+        body.append('hyperlink', hyperlink);
+        // Translator has no specific person.type (1=singer, 2=poet) — left out.
+        fetch('<?php echo base_url("person/ajax-create"); ?>', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.success) {
                     const select = document.getElementById('translator');
-                    const option = new Option(data.fullName, data.id);
+                    const option = new Option(data.fullName || name, data.id);
                     select.appendChild(option);
-                    $(select).val([...$(select).val() || [], data.id]).trigger('change');
+                    $(select).val([...($(select).val() || []), String(data.id)]).trigger('change');
+                    if (window.__adminRefreshSelect) window.__adminRefreshSelect('#translator', String(data.id));
                     addTranslatorModal.classList.remove('show');
                     document.getElementById('addTranslatorName').value = '';
                     document.getElementById('addTranslatorUrl').value = '';
@@ -2437,13 +2490,10 @@ document.getElementById('addAttributedPoet').addEventListener('click', function(
                         buttonsStyling: false
                     });
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to add translator'));
+                    alert('Error: ' + ((data && data.message) || 'Failed to add translator'));
                 }
             })
             .catch(err => alert('Error: ' + err.message));
-        } else {
-            alert("Please enter a name.");
-        }
     });
 })();
 
@@ -2557,25 +2607,60 @@ document.getElementById('addAttributedPoet').addEventListener('click', function(
   var BASE = '<?php echo base_url(); ?>';
   bindEdit('editPoetBtn', {
     selectId: '#poet', modalId: '#addPoetModal', addSaveBtnId: '#addPoet',
-    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Poet',
+    updateUrl:  BASE + 'song/ajax_update_person',
+    prefillUrl: BASE + 'song/ajax_get_person',
+    editTitle: 'Edit Poet',
     extraPayload: { type_id: 2 },
-    fields: [{ inputId: '#addPoetName', postKey: 'name', primary: true }]
+    fields: [
+      { inputId: '#addPoetName', postKey: 'name',      primary: true },
+      // Modal input is #addPoetUrl (the page renders <input id="addPoetUrl">),
+      // NOT #addPoetLink. Using the wrong id silently no-ops the prefill so the
+      // Hyperlink field stayed blank on Edit.
+      { inputId: '#addPoetUrl',  postKey: 'hyperlink' }
+    ]
   });
   bindEdit('editAttributedPoetBtn', {
     selectId: '#attributed_poet', modalId: '#addAttributedPoetModal', addSaveBtnId: '#addAttributedPoet',
-    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Attributed Poet',
+    updateUrl:  BASE + 'song/ajax_update_person',
+    prefillUrl: BASE + 'song/ajax_get_person',
+    editTitle: 'Edit Attributed Poet',
     extraPayload: { type_id: 2 },
-    fields: [{ inputId: '#addAttributedPoetName', postKey: 'name', primary: true }]
+    fields: [
+      { inputId: '#addAttributedPoetName', postKey: 'name',      primary: true },
+      { inputId: '#addAttributedPoetUrl',  postKey: 'hyperlink' }
+    ]
   });
   bindEdit('editTranslatorBtn', {
     selectId: '#translator', modalId: '#addTranslatorModal', addSaveBtnId: '#addTranslator',
-    updateUrl: BASE + 'song/ajax_update_translator', editTitle: 'Edit Translator',
-    fields: [{ inputId: '#addTranslatorName', postKey: 'name', primary: true }]
+    updateUrl:  BASE + 'song/ajax_update_translator',
+    prefillUrl: BASE + 'song/ajax_get_person',
+    editTitle: 'Edit Translator',
+    fields: [
+      { inputId: '#addTranslatorName', postKey: 'name',      primary: true },
+      { inputId: '#addTranslatorUrl',  postKey: 'hyperlink' }
+    ]
   });
   bindEdit('editKeywordBtn', {
     selectId: '#relatedkeywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#addKeywordConfirm',
-    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
-    fields: [{ inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }]
+    updateUrl:  BASE + 'song/ajax_update_keyword',
+    prefillUrl: BASE + 'song/ajax_get_keyword', // all 4 fields from DB
+    editTitle:  'Edit Keyword',
+    fields: [
+      { inputId: '#newKeywordOriginal',        postKey: 'word_original' },
+      { inputId: '#newKeywordTranslation',     postKey: 'word_translation' },
+      { inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true },
+      { inputId: '#newKeywordMeaning',         postKey: 'glossary_meaning' }
+    ]
+  });
+
+  // ----- Delete buttons (helper defined in footer.php which loads after; defer via $(function)). -----
+  $(function () {
+    if (!window.__bindAdminDelete) return;
+    __bindAdminDelete('deletePoetBtn',           { selectId: '#poet',            entity: 'person', label: 'Poet' });
+    __bindAdminDelete('deleteAttributedPoetBtn', { selectId: '#attributed_poet', entity: 'person', label: 'Attributed Poet' });
+    __bindAdminDelete('deleteTranslatorBtn',     { selectId: '#translator',      entity: 'person', label: 'Translator' });
+    __bindAdminDelete('deleteGlossaryWordBtn',   { selectId: '#coupletglossary', entity: 'word',   label: 'Glossary Word' });
+    __bindAdminDelete('deleteKeywordBtn',        { selectId: '#relatedkeywords', entity: 'word',   label: 'Keyword' });
   });
 })();
 </script>

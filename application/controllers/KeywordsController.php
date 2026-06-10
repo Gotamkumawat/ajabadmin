@@ -211,7 +211,8 @@ class KeywordsController extends CI_Controller {
                 'word_transliteration' => $translit !== '' ? $translit : '—',
                 'word_translation' => $translat !== '' ? $translat : '—',
                 'is_glossary' => $isGlossary,
-                'actions' => '<a href="'.base_url('edit-keyword/'.$row['id']).'" class="btn btn-sm btn-primary">Edit</a>
+                'actions' => '<button type="button" class="btn btn-sm btn-info admin-preview-btn" data-id="'.$row['id'].'">Preview</button>
+                              <a href="'.base_url('edit-keyword/'.$row['id']).'" class="btn btn-sm btn-primary">Edit</a>
                               <a href="'.base_url('delete-keyword/'.$row['id']).'" class="btn btn-sm btn-danger" onclick="return confirm(\'Are you sure?\')">Delete</a>'
             ];
         }

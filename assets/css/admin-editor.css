@@ -1,0 +1,42 @@
+/* =====================================================================
+ *  Admin editor marks — couplet & refrain
+ *  Ported from the old admin (ajab_old/admin/css/admin.css) so content
+ *  authored with the couplet/refrain buttons renders identically and old
+ *  data stays visually consistent.
+ *
+ *  These rules are loaded BOTH on the admin pages and inside the CKEditor
+ *  editing iframe (via config.contentsCss in admin-ckeditor.js).
+ * ===================================================================== */
+.initial-couplets,
+.couplet {
+    color: #808080;
+    font-size: 14px;
+    font-style: italic;
+}
+
+.refrain {
+    font-style: italic;
+}
+
+/* Make the custom toolbar text buttons (H1..H6, P, pre, couplet, refrain)
+   read clearly — CKEditor renders UI_BUTTON labels small by default. */
+.cke_button__h1 .cke_button_label,
+.cke_button__h2 .cke_button_label,
+.cke_button__h3 .cke_button_label,
+.cke_button__h4 .cke_button_label,
+.cke_button__h5 .cke_button_label,
+.cke_button__h6 .cke_button_label,
+.cke_button__para .cke_button_label,
+.cke_button__pre .cke_button_label,
+.cke_button__quote .cke_button_label,
+.cke_button__couplet .cke_button_label,
+.cke_button__refrain .cke_button_label,
+.cke_button__source .cke_button_label {
+    display: inline !important;   /* force the text label to show */
+    padding: 0 2px;
+}
+
+/* "Toggle HTML" reads as a text button (icon hidden via JS). */
+.cke_button__source .cke_button_label {
+    font-weight: normal;
+}

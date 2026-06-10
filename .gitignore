@@ -39,3 +39,8 @@ user_guide_src/cilexer/pycilexer.egg-info/*
 /Uploads/
 adminer-4.8.1.php
 .claude/
+
+# Archives, backups & debug logs (not source)
+*.zip
+*.backup.php
+*_debug.log

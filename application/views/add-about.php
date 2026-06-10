@@ -49,15 +49,21 @@ $sections = $this->db->order_by('sort_order','ASC')->order_by('id','ASC')->get('
                     $color = htmlspecialchars($sec->color ?: 'bg-info', ENT_QUOTES, 'UTF-8');
                     $isDefault = in_array($sec->slug, ['ajab-shahar','kabir-project'], true);
                 ?>
-                <div class="col-lg-2 col-md-4 col-sm-6" data-tile-id="<?php echo (int)$sec->id; ?>">
+                <div class="col-lg-2 col-md-4 col-sm-6" data-tile-id="<?php echo (int)$sec->id; ?>" data-section-label="<?php echo $label; ?>">
                     <a href="<?php echo base_url('about-section/' . $slug); ?>" style="text-decoration:none;">
                         <div class="small-box <?php echo $color; ?>" style="cursor:pointer; position:relative;">
                             <div class="inner">
-                                <h3 style="color:white; font-size:18px; margin:8px 0;"><?php echo $label; ?></h3>
+                                <h3 class="section-tile-label" style="color:white; font-size:18px; margin:8px 0;"><?php echo $label; ?></h3>
                             </div>
+                            <!-- Edit + Delete icons. Default sections (ajab-shahar / kabir-project)
+                                 can be renamed but not deleted. -->
+                            <button type="button" class="edit-section-btn" data-id="<?php echo (int)$sec->id; ?>" title="Edit section name"
+                                    style="position:absolute; top:6px; right:32px; background:transparent; border:none; color:#fff; opacity:.75; cursor:pointer; font-size:14px;">
+                                <i class="fa fa-edit"></i>
+                            </button>
                             <?php if (!$isDefault): ?>
                                 <button type="button" class="delete-section-btn" data-id="<?php echo (int)$sec->id; ?>" title="Delete section"
-                                        style="position:absolute; top:6px; right:8px; background:transparent; border:none; color:#fff; opacity:.7; cursor:pointer; font-size:14px;">
+                                        style="position:absolute; top:6px; right:8px; background:transparent; border:none; color:#fff; opacity:.75; cursor:pointer; font-size:14px;">
                                     <i class="fa fa-times"></i>
                                 </button>
                             <?php endif; ?>
@@ -85,12 +91,29 @@ $sections = $this->db->order_by('sort_order','ASC')->order_by('id','ASC')->get('
     </div>
 </div>
 
+<!-- Edit Section Modal -->
+<div id="editSectionModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; width:420px; max-width:92%; border-radius:8px; padding:18px; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+        <h5 style="margin:0 0 12px;">Edit Section</h5>
+        <input type="hidden" id="editSectionId" value="">
+        <div class="form-group" style="margin-bottom:12px;">
+            <label for="editSectionLabel">Section Name</label>
+            <input type="text" id="editSectionLabel" class="form-control" maxlength="120">
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" id="editSectionCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="editSectionSave">Update</button>
+        </div>
+    </div>
+</div>
+
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 $(function(){
     const createUrl = <?php echo json_encode(base_url('about-section/sections/create')); ?>;
     const deleteBaseUrl = <?php echo json_encode(base_url('about-section/sections/delete')); ?>;
+    const updateBaseUrl = <?php echo json_encode(base_url('about-section/sections/update')); ?>;
     const sectionBaseUrl = <?php echo json_encode(base_url('about-section')); ?>;
 
     const $modal = $('#addSectionModal');
@@ -105,12 +128,17 @@ $(function(){
         $.post(createUrl, { label: label }, function(resp){
             if (resp && resp.status && resp.data) {
                 const d = resp.data;
+                // Match the server-rendered structure: h3 needs the
+                // .section-tile-label class so the Edit handler picks up the
+                // current name, and both Edit + Delete icons must be present
+                // for newly-added sections (not just after a page reload).
                 const tile = $(
                     '<div class="col-lg-2 col-md-4 col-sm-6" data-tile-id="'+d.id+'">' +
                       '<a href="'+ sectionBaseUrl + '/' + d.slug +'" style="text-decoration:none;">' +
                         '<div class="small-box bg-info" style="cursor:pointer; position:relative;">' +
-                          '<div class="inner"><h3 style="color:white; font-size:18px; margin:8px 0;"></h3></div>' +
-                          '<button type="button" class="delete-section-btn" data-id="'+d.id+'" title="Delete section" style="position:absolute; top:6px; right:8px; background:transparent; border:none; color:#fff; opacity:.7; cursor:pointer; font-size:14px;"><i class="fa fa-times"></i></button>' +
+                          '<div class="inner"><h3 class="section-tile-label" style="color:white; font-size:18px; margin:8px 0;"></h3></div>' +
+                          '<button type="button" class="edit-section-btn" data-id="'+d.id+'" title="Edit section name" style="position:absolute; top:6px; right:32px; background:transparent; border:none; color:#fff; opacity:.75; cursor:pointer; font-size:14px;"><i class="fa fa-edit"></i></button>' +
+                          '<button type="button" class="delete-section-btn" data-id="'+d.id+'" title="Delete section" style="position:absolute; top:6px; right:8px; background:transparent; border:none; color:#fff; opacity:.75; cursor:pointer; font-size:14px;"><i class="fa fa-times"></i></button>' +
                         '</div>' +
                       '</a>' +
                     '</div>'
@@ -145,6 +173,46 @@ $(function(){
                     Swal.fire({icon:'error', title:'Network error', text:'Could not reach server'});
                 });
             });
+    });
+
+    // ----- Edit Section -----
+    const $editModal = $('#editSectionModal');
+    const closeEditModal = function(){ $editModal.hide(); };
+    $('#editSectionCancel').on('click', closeEditModal);
+    $editModal.on('click', function(e){ if (e.target === this) closeEditModal(); });
+
+    $('#sectionTilesRow').on('click', '.edit-section-btn', function(e){
+        e.preventDefault(); e.stopPropagation();
+        const $tile = $(this).closest('[data-tile-id]');
+        const id = $(this).data('id');
+        const currentLabel = $tile.find('.section-tile-label').text().trim();
+        $('#editSectionId').val(id);
+        $('#editSectionLabel').val(currentLabel);
+        $editModal.css('display','flex');
+        setTimeout(function(){ $('#editSectionLabel').focus().select(); }, 50);
+    });
+
+    $('#editSectionSave').on('click', function(){
+        const id = ($('#editSectionId').val() || '').trim();
+        const label = ($('#editSectionLabel').val() || '').trim();
+        if (!id) return;
+        if (!label) { Swal.fire({icon:'warning', title:'Missing name', text:'Please enter a section name'}); return; }
+        const $btn = $(this).prop('disabled', true).text('Updating...');
+        $.post(updateBaseUrl + '/' + id, { label: label }, function(resp){
+            if (resp && resp.status && resp.data) {
+                const d = resp.data;
+                const $tile = $('[data-tile-id="'+ d.id +'"]');
+                $tile.find('.section-tile-label').text(d.label);
+                // Update href to reflect new slug.
+                $tile.find('a').attr('href', sectionBaseUrl + '/' + d.slug);
+                closeEditModal();
+                Swal.fire({icon:'success', title:'Updated', timer:1000, showConfirmButton:false});
+            } else {
+                Swal.fire({icon:'error', title:'Error', text:(resp && resp.message) ? resp.message : 'Update failed'});
+            }
+        }, 'json').fail(function(){
+            Swal.fire({icon:'error', title:'Network error', text:'Could not reach server'});
+        }).always(function(){ $btn.prop('disabled', false).text('Update'); });
     });
 });
 </script>

@@ -349,7 +349,28 @@ include('inc/sidebar.php');
                     $tagOccIds = array_map(function ($o) {
                         return isset($o->id) ? (string) $o->id : '';
                     }, $occupation_profile_tag_options);
-                    $selected_occupation_only = array_values(array_intersect($selected_occupations, $topOccIds));
+                    // ============================================================
+                    // Occupation field source: person.primary_occupation column
+                    // (NOT the person_category junction). This matches the
+                    // people-list column logic so what you see on the list and
+                    // what's pre-selected in the Edit form stay in sync.
+                    // primary_occupation is typically a single category.id;
+                    // we still accept a CSV defensively.
+                    // ============================================================
+                    $selected_occupation_only = [];
+                    if (isset($person) && isset($person->primary_occupation)) {
+                        $rawPrim = trim((string) $person->primary_occupation);
+                        if ($rawPrim !== '') {
+                            foreach (explode(',', $rawPrim) as $pp) {
+                                $pp = trim($pp);
+                                if ($pp !== '') { $selected_occupation_only[] = $pp; }
+                            }
+                            $selected_occupation_only = array_values(array_unique($selected_occupation_only));
+                        }
+                    }
+                    // Profile Tags still come from person_category (the junction);
+                    // we intersect with the "profile tag" group only, and pull in
+                    // any junction ids that didn't slot into either group (legacy data).
                     $selected_profile_tags = array_values(array_intersect($selected_occupations, $tagOccIds));
                     foreach ($selected_occupations as $sid) {
                         if (!in_array($sid, $topOccIds, true) && !in_array($sid, $tagOccIds, true) && ctype_digit((string) $sid)) {
@@ -384,9 +405,24 @@ include('inc/sidebar.php');
                         <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">Occupation <span style="color:red">*</span></label>
                             <div class="col-md-4 d-flex align-items-center">
-                                <select name="occupation[]" id="occupation" class="form-control select2" style="height: 38px;" multiple="multiple" data-placeholder="Select Occupation" required>
-                                    <option value="">Select</option>
+                                <!-- Single-select Occupation. Backend (PersonController) already accepts
+                                     either a single string or an array for this POST key, so no controller
+                                     change is needed. Selecting a single existing occupation also clears any
+                                     previously chosen one. -->
+                                <!-- Plain single-select (no Select2). Using the native browser dropdown
+                                     avoids any conflict with the admin-wide Select2 matcher / Bootstrap
+                                     Multiselect init which were filtering this select down to "No results
+                                     found". `data-skip-select2="true"` tells the global init code to leave
+                                     this element alone. -->
+                                <select name="occupation" id="occupation" class="form-control" style="height: 38px;" data-skip-select2="true" required>
+                                    <option value="">Select Occupation</option>
                                     <?php
+                                    // For single-select, only the first matching previously-saved id should be
+                                    // pre-selected — anything beyond that would be silently dropped on submit.
+                                    $primary_selected = '';
+                                    foreach ($selected_occupation_only as $sid) {
+                                        if ($sid !== '' && $sid !== null) { $primary_selected = (string) $sid; break; }
+                                    }
                                     foreach ($occupation_primary_options as $occupation_row) {
                                         $occ_id = isset($occupation_row->id) ? (string)$occupation_row->id : '';
                                         $occ_label = isset($occupation_row->name) ? trim((string)$occupation_row->name) : '';
@@ -395,7 +431,7 @@ include('inc/sidebar.php');
                                         }
                                         $occ_display = $cleanOccLabel($occ_label);
                                         $occ_value = $occ_id !== '' ? $occ_id : $occ_label;
-                                        $is_selected = in_array((string)$occ_value, $selected_occupation_only, true) || in_array($occ_label, $selected_occupation_only, true);
+                                        $is_selected = ((string) $occ_value === $primary_selected) || ($occ_label === $primary_selected);
                                     ?>
                                         <option value="<?php echo htmlspecialchars((string)$occ_value); ?>" <?php echo $is_selected ? 'selected' : ''; ?> >
                                             <?php echo htmlspecialchars($occ_display !== '' ? $occ_display : $occ_label); ?>
@@ -405,6 +441,7 @@ include('inc/sidebar.php');
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addOccupationBtn">Add New</button>
                                 <button type="button" class="btn btn-primary btn-sm ml-1" id="editOccupationBtn">Edit</button>
+                                <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteOccupationBtn">Delete</button>
                             </div>
                         </div>
 
@@ -457,6 +494,7 @@ include('inc/sidebar.php');
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addProfileTagBtn">Add New</button>
                                 <button type="button" class="btn btn-primary btn-sm ml-1" id="editProfileTagBtn">Edit</button>
+                                <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteProfileTagBtn">Delete</button>
                             </div>
                         </div>
                         <?php
@@ -518,12 +556,6 @@ include('inc/sidebar.php');
                             </div>
                         </div>
                         <div class="form-group row align-items-center">
-                            <label class="col-md-2 col-form-label">Thumbnail Excerpt <span style="color:red">*</span></label>
-                            <div class="col-md-4">
-                                <input type="text" name="thumbnail_excerpt" id="thumbnail_excerpt" class="form-control" value="<?php echo isset($person->thumbnail_excerpt) ? $person->thumbnail_excerpt : ''; ?>" placeholder="Enter Thumbnail Excerpt" required>
-                            </div>
-                        </div>
-                        <div class="form-group row align-items-center">
                             <label class="col-md-2 col-form-label">About</label>
                             <div class="col-md-9">
                                 <input type="file" id="personAboutMediaInput" accept="image/*" multiple style="display:none;">
@@ -551,14 +583,28 @@ include('inc/sidebar.php');
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtn">Add New</button>
                                 <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtn">Edit</button>
+                                <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteKeywordBtn">Delete</button>
                             </div>
                             <!-- Add New Keyword Modal -->
                             <div class="custom-modal" id="addNewKeywordModal">
                                 <div class="custom-modal-content">
                                     <h5>Add New Keyword</h5>
-                                    <input type="text" id="newKeywordOriginal" class="form-control" placeholder="Enter Original Keyword">
-                                    <input type="text" id="newKeywordTranslation" class="form-control" placeholder="Enter Keyword Translation">
-                                    <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword Transliteration">
+                                    <div style="margin-bottom:10px;">
+                                        <label style="display:block;font-weight:600;margin-bottom:4px;">Original</label>
+                                        <input type="text" id="newKeywordOriginal" class="form-control" placeholder="Enter Original Keyword">
+                                    </div>
+                                    <div style="margin-bottom:10px;">
+                                        <label style="display:block;font-weight:600;margin-bottom:4px;">Translation</label>
+                                        <input type="text" id="newKeywordTranslation" class="form-control" placeholder="Enter Keyword Translation">
+                                    </div>
+                                    <div style="margin-bottom:10px;">
+                                        <label style="display:block;font-weight:600;margin-bottom:4px;">Transliteration</label>
+                                        <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword Transliteration">
+                                    </div>
+                                    <div style="margin-bottom:10px;">
+                                        <label style="display:block;font-weight:600;margin-bottom:4px;">Word Meaning</label>
+                                        <textarea id="newKeywordMeaning" class="form-control" rows="3" placeholder="Enter word meaning"></textarea>
+                                    </div>
                                     <div class="custom-modal-actions">
                                         <button type="button" class="btn btn-secondary btn-sm" id="cancelAddNewKeyword">Cancel</button>
                                         <button type="button" class="btn btn-success btn-sm" id="addKeywordConfirm">Add</button>
@@ -829,9 +875,8 @@ $(document).ready(function() {
                     if ($target.find('option[value="' + optionValue.replace(/(["\\])/g, '\\$1') + '"]').length === 0) {
                         $target.append(new Option(optionText, optionValue));
                     }
-                    let cur = $target.val() || [];
-                    cur.push(optionValue);
-                    $target.val(cur).trigger('change');
+                    // Single-select: just set the value (no array push).
+                    $target.val(optionValue).trigger('change');
                     closeOccupationModal();
                     Swal.fire({ icon: 'success', title: 'Success', text: response.message || 'Occupation added successfully' });
                 } else {
@@ -887,15 +932,23 @@ $(document).ready(function() {
     });
 
     // --- Add New Keyword ---
-    function openKeywordModal() { $('#addNewKeywordModal').css('display', 'flex'); $('#newKeywordTransliteration').val('').focus(); }
+    function __personKwClear() {
+        ['newKeywordOriginal','newKeywordTranslation','newKeywordTransliteration','newKeywordMeaning'].forEach(function (id) {
+            var el = document.getElementById(id); if (el) el.value = '';
+        });
+    }
+    function openKeywordModal() { __personKwClear(); $('#addNewKeywordModal').css('display', 'flex'); setTimeout(function(){ $('#newKeywordTransliteration').focus(); }, 200); }
     function closeKeywordModal() { $('#addNewKeywordModal').hide(); }
     $('#addNewKeywordBtn').on('click', openKeywordModal);
     $('#cancelAddNewKeyword').on('click', closeKeywordModal);
     $('#addNewKeywordModal').on('click', function(e) { if (e.target.id === 'addNewKeywordModal') { closeKeywordModal(); } });
         $('#addKeywordConfirm').on('click', function() {
-        const keyword = $('#newKeywordTransliteration').val().trim();
+        const original    = $('#newKeywordOriginal').val().trim();
+        const translation = $('#newKeywordTranslation').val().trim();
+        const keyword     = $('#newKeywordTransliteration').val().trim();
+        const meaning     = $('#newKeywordMeaning').val().trim();
         if (!keyword) {
-            Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Keyword' });
+            Swal.fire({ icon: 'warning', title: 'Missing Input', text: 'Please enter Transliteration' });
             $('#newKeywordTransliteration').focus();
             return;
         }
@@ -905,21 +958,30 @@ $(document).ready(function() {
             url: createKeywordUrl,
             type: 'POST',
             dataType: 'json',
-            data: { word_transliteration: keyword },
+            data: {
+                word_original:        original,
+                word_translation:     translation,
+                word_transliteration: keyword,
+                glossary_meaning:     meaning
+            },
             success: function(response) {
-                if (response && response.status === 'success') {
-                    const optionValue = response.keyword_id ? String(response.keyword_id) : response.word_transliteration;
+                if (response && (response.status === 'success' || response.success)) {
+                    const optionValue = response.keyword_id ? String(response.keyword_id) : (response.id ? String(response.id) : response.word_transliteration);
                     const optionText = response.word_transliteration;
                     if ($('#keywords option[value="' + optionValue.replace(/(["\\])/g, '\\$1') + '"]').length === 0) {
                         $('#keywords').append(new Option(optionText, optionValue));
                     }
                     let selected = $('#keywords').val() || [];
-                    selected.push(optionValue);
+                    if (!selected.includes(optionValue)) { selected.push(optionValue); }
                     $('#keywords').val(selected).trigger('change');
+                    if (window.__adminRefreshSelect) {
+                        window.__adminRefreshSelect('#keywords', optionValue);
+                    }
                     closeKeywordModal();
-                    Swal.fire({ icon: 'success', title: 'Success', text: response.message || 'Keyword added successfully' });
+                    __personKwClear();
+                    Swal.fire({ icon: 'success', title: 'Success', text: response.message || 'Keyword saved successfully' });
                 } else {
-                    Swal.fire({ icon: 'error', title: 'Error', text: (response && response.message) ? response.message : 'Unable to add keyword' });
+                    Swal.fire({ icon: 'error', title: 'Error', text: (response && response.message) ? response.message : 'Unable to save keyword' });
                 }
             },
             error: function() {
@@ -1259,8 +1321,7 @@ $(document).ready(function() {
         const fields = [
             { id: 'first_name',        name: 'First Name',        type: 'input' },
             { id: 'last_name',         name: 'Last Name',         type: 'input' },
-            { id: 'occupation',        name: 'Occupation',        type: 'multiselect' },
-            { id: 'thumbnail_excerpt', name: 'Thumbnail Excerpt', type: 'input' }
+            { id: 'occupation',        name: 'Occupation',        type: 'select' }
         ];
         for (let field of fields) {
             let element = document.getElementById(field.id);
@@ -1318,8 +1379,23 @@ $(document).ready(function() {
   });
   bindEdit('editKeywordBtn', {
     selectId: '#keywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#addKeywordConfirm',
-    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
-    fields: [{ inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }]
+    updateUrl:  BASE + 'song/ajax_update_keyword',
+    prefillUrl: BASE + 'song/ajax_get_keyword',
+    editTitle:  'Edit Keyword',
+    fields: [
+      { inputId: '#newKeywordOriginal',        postKey: 'word_original' },
+      { inputId: '#newKeywordTranslation',     postKey: 'word_translation' },
+      { inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true },
+      { inputId: '#newKeywordMeaning',         postKey: 'glossary_meaning' }
+    ]
+  });
+
+  // ----- Delete buttons (helper defined in footer.php which loads after; defer via $(function)). -----
+  $(function () {
+    if (!window.__bindAdminDelete) return;
+    __bindAdminDelete('deleteOccupationBtn', { selectId: '#occupation',   entity: 'category', label: 'Occupation' });
+    __bindAdminDelete('deleteProfileTagBtn', { selectId: '#profile_tags', entity: 'category', label: 'Profile Tag' });
+    __bindAdminDelete('deleteKeywordBtn',    { selectId: '#keywords',     entity: 'word',     label: 'Keyword' });
   });
 })();
 </script>

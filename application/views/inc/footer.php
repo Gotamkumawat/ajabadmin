@@ -63,6 +63,11 @@
 <script src="<?php echo base_url('dist/js/pages/dashboard.js'); ?>"></script>
 
 <script src="https://cdn.ckeditor.com/4.22.1/standard-all/ckeditor.js"></script>
+<!-- Admin-wide CKEditor toolbar: forces ONE standard toolbar (ported from
+     the old textAngular admin) onto every editor, incl. custom couplet/refrain
+     buttons. Single source of truth — see assets/js/admin-ckeditor.js. -->
+<script>window.__ADMIN_EDITOR_CSS = "<?php echo base_url('assets/css/admin-editor.css'); ?>";</script>
+<script src="<?php echo base_url('assets/js/admin-ckeditor.js'); ?>"></script>
 <script>
     // Suppress CKEditor "version not secure" notification globally
     if (typeof CKEDITOR !== 'undefined') {
@@ -78,6 +83,58 @@
 <!-- Bootstrap Multiselect plugin — loaded after Select2 to ensure same jQuery instance -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-multiselect/0.9.13/js/bootstrap-multiselect.min.js"></script>
 <script>
+  // ===== Global Select2 default matcher — strict alphabetical prefix =====
+  // Typing "a" only shows options whose label STARTS with "a". Mid-word
+  // matches do not appear. Empty query shows everything. Placeholder
+  // (value="") options are always returned unchanged so the dropdown
+  // doesn't render an empty "No results found" state on first open.
+  if (window.jQuery && jQuery.fn && jQuery.fn.select2 && jQuery.fn.select2.amd) {
+    try {
+      var Defaults = jQuery.fn.select2.amd.require('select2/defaults');
+      Defaults.defaults.matcher = function (params, data) {
+        if (!data) return null;
+        var q = (params && params.term ? String(params.term) : '').toLowerCase().trim();
+        // Empty query OR placeholder/empty-value option → always show.
+        if (q === '' || data.id === '' || data.id == null) return data;
+        if (data.children && data.children.length) {
+          var matchedChildren = [];
+          for (var i = 0; i < data.children.length; i++) {
+            var child = data.children[i];
+            var childText = String(child.text || '').toLowerCase().trim();
+            if (childText.indexOf(q) === 0) matchedChildren.push(child);
+          }
+          if (matchedChildren.length) {
+            var clone = jQuery.extend({}, data, true);
+            clone.children = matchedChildren;
+            return clone;
+          }
+          return null;
+        }
+        var t = String(data.text || '').toLowerCase().trim();
+        return (t.indexOf(q) === 0) ? data : null;
+      };
+    } catch (e) { /* select2 not ready yet — ignore */ }
+  }
+
+  // ===================================================================
+  // SYNCHRONOUS shim for the Delete-button binder.
+  // The full helpers (window.__adminDeleteOption / __bindAdminDelete) are
+  // assigned inside the $(function () { ... }) block below, which means
+  // page views that wrap their __bindAdminDelete() calls in their own
+  // $(function () { ... }) can race the helper assignment depending on
+  // jQuery's DOMReady registration order.
+  //
+  // To eliminate that race we expose __bindAdminDelete at parse time as a
+  // queue: it just records the call, and once the real helper is ready
+  // (later in this same file, on DOMReady) the queue is replayed.
+  // ===================================================================
+  if (typeof window !== 'undefined' && typeof window.__bindAdminDelete !== 'function') {
+    window.__bindAdminDeleteQueue = window.__bindAdminDeleteQueue || [];
+    window.__bindAdminDelete = function (btnId, opts) {
+      window.__bindAdminDeleteQueue.push([btnId, opts]);
+    };
+  }
+
   $(function () {
     // ===== Global Bootstrap Multiselect search filter (delegated to document) =====
     $(document).on('click mousedown mouseup keydown keypress keyup input', '.ms-search-input', function(e) {
@@ -92,22 +149,11 @@
         var li = lis[i];
         if (li.classList && li.classList.contains('ms-helper-container')) continue;
         var txt = (li.textContent || '').toLowerCase().trim();
-        // First-name basis: match the start of the option label OR the start of
-        // any whitespace-separated word inside it. So "kab" matches "Kabir Das",
-        // "das" matches "Kabir Das", but "abir" does NOT match (no mid-word hits).
-        var match = false;
-        if (q === '') {
-          match = true;
-        } else {
-          if (txt.indexOf(q) === 0) {
-            match = true;
-          } else {
-            var words = txt.split(/\s+/);
-            for (var w = 0; w < words.length; w++) {
-              if (words[w].indexOf(q) === 0) { match = true; break; }
-            }
-          }
-        }
+        // Strict alphabetical prefix: only show options whose label STARTS WITH
+        // the query. Typing "a" => only items beginning with A; typing "ma" =>
+        // only items beginning with "Ma...". Mid-word and later-word matches do
+        // NOT show (e.g. "Mooralala Marwada" will appear for "moo" but NOT for "mar").
+        var match = (q === '') || (txt.indexOf(q) === 0);
         if (match) {
           li.classList.remove('ms-hidden');
           li.style.setProperty('display', '', 'important');
@@ -159,6 +205,141 @@
         // Plain change for any other listeners
         $el.trigger('change');
     };
+
+    /**
+     * ADMIN-WIDE: Safe-delete the currently-selected option from a select field.
+     * Used by the "Delete" button next to Add New / Edit on every select.
+     *
+     * Note: these helpers are assigned inside the DOMReady wrapper, so page
+     * views that bind to them must ALSO defer to DOMReady — see below for a
+     * shim that exposes them synchronously at script-parse time too, so even
+     * naive page code that calls __bindAdminDelete() before DOMReady runs OK.
+     *
+     * Flow:
+     *   1) Validate exactly one item is currently selected.
+     *   2) Show SweetAlert "Are you sure?" confirm (red Delete button).
+     *   3) POST to song/ajax_delete_entity with { entity, id }.
+     *   4) Backend either deletes the row OR refuses if the id is still
+     *      linked elsewhere (returns blocker list).
+     *   5) On success: remove the <option>, refresh the widget, success toast.
+     *   6) On in-use refusal: show the blocker list so the user knows where
+     *      to remove links first.
+     */
+    window.__adminDeleteOption = function (opts) {
+        opts = opts || {};
+        var $el = $(opts.selectId);
+        if (!$el.length) { console.warn('[adminDelete] select not found:', opts.selectId); return; }
+        var label = opts.label || 'item';
+        var entity = opts.entity || 'person';
+
+        var vals = $el.val();
+        if (!vals) vals = [];
+        if (!Array.isArray(vals)) vals = [vals];
+        vals = vals.filter(function (v) { return v !== '' && v !== null && v !== undefined; });
+        if (vals.length === 0) {
+            if (window.Swal) Swal.fire({ icon: 'info', title: 'Select an item', text: 'Please select exactly one ' + label.toLowerCase() + ' to delete.' });
+            else alert('Please select one ' + label.toLowerCase() + ' to delete.');
+            return;
+        }
+        if (vals.length > 1) {
+            if (window.Swal) Swal.fire({ icon: 'info', title: 'Pick one', text: 'Delete works on a single selection. Please select only one item.' });
+            else alert('Delete works on a single selection.');
+            return;
+        }
+        var id = String(vals[0]);
+        var $opt = $el.find('option[value="' + id.replace(/(["\\])/g, '\\$1') + '"]');
+        var optionText = $opt.length ? $.trim($opt.text()) : id;
+
+        var doDelete = function () {
+            // Use text dataType + manual JSON.parse so we can detect when the
+            // server returned an HTML page (e.g. session-expired redirect to
+            // /login) instead of JSON, and show a clean message instead of
+            // jQuery's confusing "Unexpected token '<'" parse error.
+            $.ajax({
+                url:      '<?php echo base_url('song/ajax_delete_entity'); ?>',
+                type:     'POST',
+                data:     { entity: entity, id: id },
+                dataType: 'text'
+            }).done(function (raw) {
+                var resp;
+                try { resp = JSON.parse(raw); }
+                catch (e) {
+                    if (window.Swal) Swal.fire({ icon:'error', title:'Session expired', text:'Your session has expired. Please reload the page and log in again.' });
+                    else alert('Session expired. Please reload and log in.');
+                    return;
+                }
+                if (resp && resp.success) {
+                    if ($opt.length) $opt.remove();
+                    var current = $el.val();
+                    if (Array.isArray(current)) {
+                        current = current.filter(function (v) { return String(v) !== id; });
+                        $el.val(current);
+                    } else {
+                        $el.val('');
+                    }
+                    if (window.__adminRefreshSelect) window.__adminRefreshSelect($el);
+                    else $el.trigger('change');
+                    if (window.Swal) Swal.fire({ icon:'success', title:'Deleted', text: label + ' "' + optionText + '" removed', timer:1500, showConfirmButton:false });
+                } else if (resp && resp.in_use) {
+                    var msg = resp.message || (label + ' is still in use elsewhere.');
+                    if (window.Swal) Swal.fire({ icon:'error', title:'Cannot delete', text: msg, width:520 });
+                    else alert(msg);
+                } else {
+                    var err = (resp && resp.message) ? resp.message : 'Delete failed';
+                    if (window.Swal) Swal.fire({ icon:'error', title:'Error', text: err });
+                    else alert(err);
+                }
+            }).fail(function (jqXHR) {
+                var msg = 'Could not reach the server.';
+                if (jqXHR && jqXHR.status === 0) msg = 'Network error — server may be down.';
+                else if (jqXHR && jqXHR.status === 403) msg = 'Not allowed. Please reload and log in.';
+                else if (jqXHR && jqXHR.status === 404) msg = 'Delete endpoint not found (404). The route may not be registered.';
+                else if (jqXHR && jqXHR.status >= 500) msg = 'Server error (' + jqXHR.status + '). Check the PHP error log.';
+                if (window.Swal) Swal.fire({ icon:'error', title:'Network error', text: msg });
+                else alert(msg);
+            });
+        };
+
+        if (window.Swal) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Delete this ' + label.toLowerCase() + '?',
+                html: '<b>' + $('<div/>').text(optionText).html() + '</b> will be permanently removed from the database. This cannot be undone.',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, delete',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc3545'
+            }).then(function (r) { if (r.isConfirmed) doDelete(); });
+        } else {
+            if (confirm('Delete ' + optionText + '? This cannot be undone.')) doDelete();
+        }
+    };
+
+    /**
+     * Convenience: wire a Delete button (by id) to a select field. Use this
+     * once per button so views don't need to repeat the click-handler boilerplate.
+     *
+     *   __bindAdminDelete('deleteSingerBtn', { selectId: '#singer', entity: 'person', label: 'Singer' });
+     */
+    window.__bindAdminDelete = function (btnId, opts) {
+        var b = document.getElementById(btnId);
+        if (!b) return;
+        if (b.dataset.adminDeleteBound === '1') return;
+        b.dataset.adminDeleteBound = '1';
+        b.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.__adminDeleteOption(opts);
+        });
+    };
+
+    // Flush the parse-time queue (any __bindAdminDelete() calls that happened
+    // before this real assignment took effect) so those bindings actually attach.
+    if (Array.isArray(window.__bindAdminDeleteQueue)) {
+        var __q = window.__bindAdminDeleteQueue;
+        window.__bindAdminDeleteQueue = null;
+        __q.forEach(function (args) { window.__bindAdminDelete.apply(null, args); });
+    }
 
     /**
      * ADMIN-WIDE: Open an existing "Add New" modal in EDIT mode for the currently
@@ -244,17 +425,34 @@
       var addBtnDisplay = $addBtn.length ? $addBtn.css('display') : '';
 
       // ----- Pre-fill fields -----
-      // Only the primary field is auto-filled with the option label; others left untouched (user can blank/keep)
+      // Primary field gets the option label by default; others left untouched (user can blank/keep).
+      // optional data-* attributes on the <option> are also pulled in (e.g. data-hyperlink).
       fields.forEach(function (f) {
         var $inp = $(f.inputId);
         if (!$inp.length) return;
         if (f.primary) $inp.val(currentText);
-        // optional data-* prefill from option (e.g. <option data-hyperlink="https://...">)
         if (f.optionDataKey) {
           var dv = $opt.attr('data-' + f.optionDataKey);
           if (dv != null) $inp.val(dv);
         }
       });
+
+      // OPTIONAL: when opts.prefillUrl is set, fetch the full record from the server
+      // and populate every field whose `postKey` matches a returned JSON key.
+      // Used e.g. for keyword edit so all 4 fields (original/translation/transliteration/meaning)
+      // come from the database, not just the dropdown's visible label.
+      if (opts.prefillUrl) {
+        var prefillPayload = {};
+        prefillPayload[opts.idPostKey || 'id'] = id;
+        $.post(opts.prefillUrl, prefillPayload, function (resp) {
+          if (!resp || (resp.success !== true && resp.status !== 'success')) return;
+          fields.forEach(function (f) {
+            if (!f.postKey || resp[f.postKey] == null) return;
+            var $inp = $(f.inputId);
+            if ($inp.length) $inp.val(String(resp[f.postKey]));
+          });
+        }, 'json');
+      }
 
       // ----- Inject Update button next to existing Add button -----
       if ($addBtn.length) $addBtn.hide();
@@ -268,14 +466,28 @@
       // Swap title
       if ($title.length) $title.text(opts.editTitle || ('Edit ' + (origTitle || 'Item').replace(/^Add\s*New\s*/i, '')));
 
-      // Show modal — Bootstrap .modal (has .fade) vs custom display:flex dialog
+      // Show modal — Bootstrap .modal (has .fade) vs custom display:flex dialog.
+      // We *manually* apply the open state instead of trusting Bootstrap's
+      // modal('show'), because some views run page-specific show/hide logic on
+      // the same modal that leaves it half-open (display:block, no .show class,
+      // no backdrop) which then makes Bootstrap refuse to fade in. Doing it
+      // ourselves is deterministic across BS4/BS5 mixed setups.
       var isBsModal = $modal.hasClass('modal') && ($modal.hasClass('fade') || $modal.attr('role') === 'dialog' || $modal.attr('data-bs-backdrop') != null);
       if (isBsModal) {
-        try {
-          if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance($modal[0]).show();
-          else if ($.fn.modal) $modal.modal('show');
-          else $modal.css('display', 'block');
-        } catch (e) { $modal.css('display', 'block'); }
+        // Clear any leftover state from a previous half-open attempt.
+        $('.modal-backdrop, #kw-modal-backdrop, #gw-modal-backdrop').remove();
+        $modal
+          .css('display', 'block')
+          .removeAttr('aria-hidden')
+          .attr('aria-modal', 'true')
+          .attr('role', 'dialog');
+        // Force a reflow then add `.show` so the CSS opacity transition fires.
+        void $modal[0].offsetWidth;
+        $modal.addClass('show');
+        $('body').addClass('modal-open');
+        // Inject our own backdrop (we'll remove it on close).
+        var $bd = $('<div class="modal-backdrop fade show __admin_edit_backdrop"></div>');
+        $('body').append($bd);
       } else {
         // Custom dialog — force on top of sidebar/AdminLTE chrome
         $modal.css({
@@ -312,11 +524,12 @@
           });
           $modal.children().first().css('z-index', '');
         } else {
-          try {
-            if (window.bootstrap && bootstrap.Modal) { var inst = bootstrap.Modal.getInstance($modal[0]); if (inst) inst.hide(); }
-            else if ($.fn.modal) $modal.modal('hide');
-            else $modal.hide();
-          } catch (e) { $modal.hide(); }
+          // Manual close matching the manual open above. Avoids relying on
+          // Bootstrap's internal state which may be stale on this page.
+          $modal.removeClass('show').css('display', 'none').attr('aria-hidden', 'true').removeAttr('aria-modal');
+          $('.__admin_edit_backdrop').remove();
+          // Only drop modal-open if no other modal is still visible.
+          if (!$('.modal.show').length) { $('body').removeClass('modal-open'); }
         }
       };
 
@@ -648,6 +861,12 @@
   #adminCropModal .acm-cancel{background:#6c757d;color:#fff;}
   #adminCropModal .acm-skip{background:#e0e0e0;color:#333;}
   #adminCropModal .acm-ok{background:#28a745;color:#fff;}
+  /* Normalize small action buttons (Add New / Edit / Delete trios).
+     Several form pages override .btn-primary with padding:6px 20px; font-size:16px,
+     which made the blue "Edit" button render larger than its btn-sm siblings.
+     This higher-specificity rule (.btn.btn-sm beats .btn-primary) restores
+     Bootstrap's small size so all three buttons match. */
+  .btn.btn-sm { padding: 0.25rem 0.5rem; font-size: 0.875rem; line-height: 1.5; border-radius: 0.2rem; }
 </style>
 <div id="adminCropModal" aria-hidden="true">
   <div class="acm-box">
@@ -672,6 +891,41 @@
     </div>
   </div>
 </div>
+<!-- ============================================================= -->
+<!--  ADMIN-WIDE LIST "PREVIEW" BUTTON (placeholder for now)        -->
+<!--  Every *-list.php row-action column calls __adminPreviewBtn(id) -->
+<!--  to render a uniform cyan "Preview" button before Edit.        -->
+<!--  Right now it's a placeholder — clicking shows a small notice. -->
+<!--  When the public/front-end URLs are ready, point the handler    -->
+<!--  (and optionally the markup) at the real preview link in this   -->
+<!--  ONE place and every list page updates at once.                 -->
+<!-- ============================================================= -->
+<script>
+(function () {
+  if (window.__adminPreviewInit) return;
+  window.__adminPreviewInit = true;
+
+  // Returns the HTML for a row "Preview" button. `id` is the row id (kept on a
+  // data attribute so the future real handler can use it). Trailing space keeps
+  // it visually separated from the Edit button that follows.
+  window.__adminPreviewBtn = function (id) {
+    return '<button type="button" class="btn btn-sm btn-info admin-preview-btn" data-id="' + id + '">Preview</button> ';
+  };
+
+  // Placeholder click behaviour — no navigation yet. Delegated so it works for
+  // rows DataTables draws/re-draws after this script runs.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.admin-preview-btn') : null;
+    if (!btn) return;
+    e.preventDefault();
+    if (window.Swal) {
+      Swal.fire({ icon: 'info', title: 'Preview', text: 'Preview will be available soon.', timer: 1400, showConfirmButton: false });
+    } else {
+      alert('Preview will be available soon.');
+    }
+  });
+})();
+</script>
 <script>
 (function () {
   if (window.__adminCropInit) return;
@@ -810,17 +1064,24 @@
 </script>
 
 <!-- ============================================================= -->
-<!--  ADMIN-WIDE THUMBNAIL EXCERPT — 50-word hard limit              -->
-<!--  Attaches to every  <input name="thumbnail_excerpt">  and       -->
-<!--  <input name="thumbnailexcerpt"> across the admin panel:        -->
-<!--    • Adds a "Limit: 50 words" hint next to the box              -->
-<!--    • Adds a live "X / 50 words" counter under the box           -->
-<!--    • HARD-CAPS input at 50 words (extra words are stripped on   -->
-<!--      input/paste so the 51st word can never be entered)         -->
+<!--  ADMIN-WIDE WORD-LIMIT HELPER                                  -->
+<!--  Auto-attaches a "(Limit: N words)" hint, a live "X / N words"  -->
+<!--  counter, and a hard cap to specific form fields by name.       -->
+<!--  Adjust LIMIT_RULES to add/remove fields and limits.            -->
+<!--                                                                  -->
+<!--  Current rules:                                                  -->
+<!--    • thumbnail_excerpt / thumbnailexcerpt → 50 words            -->
+<!--    • series_description                   → 100 words           -->
 <!-- ============================================================= -->
 <style>
-  .te-side-note { display:inline-block; margin-left:10px; color:#6c757d; font-size:12px; font-style:italic; white-space:nowrap; }
-  .te-counter   { display:block; margin-top:4px; color:#6c757d; font-size:12px; }
+  /* Wrapper places the input on the left and the (Limit + counter) block on
+     the right, vertically centred. Works equally well for <input> and
+     <textarea>; on narrow screens it gracefully wraps the info below. */
+  .te-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .te-row > .form-control { flex:1 1 0; min-width:200px; }
+  .te-info  { display:flex; flex-direction:column; gap:2px; color:#6c757d; font-size:12px; line-height:1.3; white-space:nowrap; }
+  .te-side-note { color:#6c757d; font-style:italic; }
+  .te-counter   { color:#6c757d; }
   .te-counter.is-near { color:#b58900; }
   .te-counter.is-max  { color:#d9534f; font-weight:600; }
 </style>
@@ -829,7 +1090,18 @@
   if (window.__teInit) return;
   window.__teInit = true;
 
-  var LIMIT = 50;
+  // Each rule: { selector: CSS selector, limit: number of words allowed }.
+  // Frontend AND backend must agree on these limits.
+  var LIMIT_RULES = [
+    {
+      selector: 'input[name="thumbnail_excerpt"], input[name="thumbnailexcerpt"], textarea[name="thumbnail_excerpt"], textarea[name="thumbnailexcerpt"]',
+      limit:    50
+    },
+    {
+      selector: 'input[name="series_description"], textarea[name="series_description"]',
+      limit:    100
+    }
+  ];
 
   function wordsOf(s) {
     s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
@@ -837,7 +1109,7 @@
     return s.split(' ');
   }
 
-  function clampToLimit(value) {
+  function clampToLimit(value, LIMIT) {
     var w = wordsOf(value);
     if (w.length <= LIMIT) return null; // already within limit
     // Preserve a single trailing space if the user just typed one (so the next
@@ -846,57 +1118,68 @@
     return w.slice(0, LIMIT).join(' ') + (trailingSpace ? ' ' : '');
   }
 
-  function makeCounter(input) {
-    var c = document.createElement('small');
-    c.className = 'te-counter';
-    // Put the counter right after the input. If a wrapper around the input is
-    // a flex row, append to its parent's parent so it sits on a new line below.
-    var host = input.parentElement || input;
-    host.appendChild(c);
-    return c;
-  }
+  // Wrap the input in a flex row and append a small info column on its right
+  // holding both "(Limit: N words)" and the live counter. Returns the counter
+  // element so updateCounter() can set its text and color classes.
+  function makeRowAndCounter(input, LIMIT) {
+    if (input.dataset.teWrapped === '1') {
+      // Already wrapped — just return the existing counter.
+      var existingCounter = input.parentNode && input.parentNode.querySelector('.te-counter');
+      if (existingCounter) return existingCounter;
+    }
+    input.dataset.teWrapped = '1';
 
-  function makeSideNote(input) {
-    // Avoid double-adding when this runs more than once.
-    if (input.dataset.teSidenote === '1') return;
-    input.dataset.teSidenote = '1';
+    var row = document.createElement('div');
+    row.className = 'te-row';
+    // Slot the row in where the input lives, then move the input into the row.
+    if (input.parentNode) {
+      input.parentNode.insertBefore(row, input);
+    }
+    row.appendChild(input);
+
+    var info = document.createElement('div');
+    info.className = 'te-info';
+
     var note = document.createElement('span');
     note.className = 'te-side-note';
     note.textContent = '(Limit: ' + LIMIT + ' words)';
-    if (input.nextSibling) {
-      input.parentNode.insertBefore(note, input.nextSibling);
-    } else {
-      input.parentNode.appendChild(note);
-    }
+    info.appendChild(note);
+
+    var counter = document.createElement('span');
+    counter.className = 'te-counter';
+    info.appendChild(counter);
+
+    row.appendChild(info);
+    return counter;
   }
 
-  function updateCounter(input, counter) {
+  function updateCounter(input, counter, LIMIT) {
     var n = wordsOf(input.value).length;
     counter.textContent = n + ' / ' + LIMIT + ' words';
     counter.classList.toggle('is-max',  n >= LIMIT);
     counter.classList.toggle('is-near', n >= Math.max(1, LIMIT - 10) && n < LIMIT);
   }
 
-  function attach(input) {
+  function attach(input, LIMIT) {
     if (!input || input.dataset.teBound === '1') return;
     if (input.tagName !== 'INPUT' && input.tagName !== 'TEXTAREA') return;
-    input.dataset.teBound = '1';
+    input.dataset.teBound  = '1';
+    input.dataset.teLimit  = String(LIMIT);
 
     // Tighten initial value if a server-side record already had > LIMIT words.
-    var clamped = clampToLimit(input.value);
+    var clamped = clampToLimit(input.value, LIMIT);
     if (clamped !== null) input.value = clamped;
 
-    makeSideNote(input);
-    var counter = makeCounter(input);
-    updateCounter(input, counter);
+    var counter = makeRowAndCounter(input, LIMIT);
+    updateCounter(input, counter, LIMIT);
 
     function enforce() {
-      var c = clampToLimit(input.value);
+      var c = clampToLimit(input.value, LIMIT);
       if (c !== null) {
         // Preserve caret position relative to the end of the value when possible.
         input.value = c;
       }
-      updateCounter(input, counter);
+      updateCounter(input, counter, LIMIT);
     }
 
     // Handle every way text can change: typing, paste, drag-drop, autofill, IME.
@@ -924,10 +1207,11 @@
   }
 
   function scan(root) {
-    var inputs = (root || document).querySelectorAll(
-      'input[name="thumbnail_excerpt"], input[name="thumbnailexcerpt"], textarea[name="thumbnail_excerpt"], textarea[name="thumbnailexcerpt"]'
-    );
-    for (var i = 0; i < inputs.length; i++) attach(inputs[i]);
+    var r = root || document;
+    LIMIT_RULES.forEach(function (rule) {
+      var inputs = r.querySelectorAll(rule.selector);
+      for (var i = 0; i < inputs.length; i++) attach(inputs[i], rule.limit);
+    });
   }
 
   if (document.readyState === 'loading') {
@@ -938,6 +1222,55 @@
   // Re-scan after a moment to catch any inputs rendered late by other scripts.
   setTimeout(function () { scan(document); }, 500);
 })();
+</script>
+
+<!-- ============================================================
+     ADMIN-WIDE Sl.No COLUMN FIX FOR LIST PAGES
+     Every *-list.php uses DataTables with a first column rendered as
+       function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; }
+     In this DataTables version `m.row` returns the ORIGINAL data-array
+     index (not the visible position), so after a sort the column shows
+     scrambled numbers like 96, 19, 55, 101...
+     Fix: after every draw (sort/filter/page), walk the visible rows and
+     write sequential numbers 1, 2, 3... into the first column. We do this
+     once globally so individual list pages don't have to be edited.
+     ============================================================ -->
+<script>
+$(function () {
+  if (!window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) return;
+
+  function renumberSlNo($table) {
+    // First column = Sl.No. Walk visible <tr> in order and replace cell 0 text
+    // with the 1-based index. Works for paged / sorted / filtered views.
+    var startIndex = 1;
+    var api = $table.DataTable();
+    // _iDisplayStart is the offset into the dataset of the first visible row,
+    // so on page 2 with pageSize 10 we start at 11.
+    try { startIndex = (api.settings()[0]._iDisplayStart || 0) + 1; } catch (e) {}
+    $table.find('tbody tr').each(function (i) {
+      var $firstCell = $(this).children('td').first();
+      if ($firstCell.length) { $firstCell.text(startIndex + i); }
+    });
+  }
+
+  // Apply to any DataTable currently on the page.
+  function attachAll() {
+    $('table').each(function () {
+      var $t = $(this);
+      if (!$.fn.dataTable.isDataTable(this)) return;
+      if ($t.data('__slNoFixAttached')) return;
+      $t.data('__slNoFixAttached', true);
+      // Run once now (covers initial draw) and on every subsequent draw.
+      renumberSlNo($t);
+      $t.on('draw.dt', function () { renumberSlNo($t); });
+    });
+  }
+  attachAll();
+  // DataTables in some pages init slightly after $(function); re-attempt a few times.
+  setTimeout(attachAll, 300);
+  setTimeout(attachAll, 1000);
+  setTimeout(attachAll, 2500);
+});
 </script>
 </body>
 </html>

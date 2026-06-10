@@ -252,6 +252,7 @@ if ($thumbRaw !== '') {
                                             </select>
                                     <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtn">Add New</button>
                                     <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtn">Edit</button>
+                                    <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteKeywordBtn">Delete</button>
                                 </div>
                             </div>
                             <div class="form-group row align-items-center">
@@ -398,59 +399,8 @@ $(document).ready(function() {
         }
     }, 400);
 
-    $('#addNewKeywordBtn').on('click', function() {
-            Swal.fire({
-            title: 'Add New Keyword',
-            html: `
-                <div class="form-group">
-                    <label>Original</label>
-                    <input id="swal-original" class="swal2-input" placeholder="Enter Original Keyword">
-                </div>
-                <div class="form-group">
-                    <label>Translation</label>
-                    <input id="swal-translation" class="swal2-input" placeholder="Enter Keyword Translation">
-                </div>
-                <div class="form-group">
-                    <label>Transliteration</label>
-                    <input id="swal-transliteration" class="swal2-input" placeholder="Enter Keyword Transliteration">
-                </div>
-            `,
-            showCancelButton: true,
-            preConfirm: () => {
-                const original = document.getElementById('swal-original').value;
-                const translation = document.getElementById('swal-translation').value;
-                const transliteration = document.getElementById('swal-transliteration').value;
-                if (!transliteration) {
-                    Swal.showValidationMessage('Transliteration is required');
-                    return false;
-                }
-                return { original, translation, transliteration };
-            }
-        }).then(async (result) => {
-            if (!result.isConfirmed) return;
-            const res = await fetch('<?= base_url('SongController/ajax_create_keyword') ?>', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'word_transliteration=' + encodeURIComponent(result.value.transliteration.trim()) + 
-                       '&word_original=' + encodeURIComponent(result.value.original.trim()) + 
-                       '&word_translation=' + encodeURIComponent(result.value.translation.trim())
-            });
-            const data = await res.json();
-            if (data && data.status === 'success') {
-                const val = String(data.keyword_id || data.id);
-                const txt = data.word_transliteration || result.value.trim();
-                if ($('#related_keywords option[value="' + val.replace(/(["\\])/g, '\\$1') + '"]').length === 0) {
-                    $('#related_keywords').append(new Option(txt, val));
-                }
-                let selected = $('#related_keywords').val() || [];
-                selected.push(val);
-                $('#related_keywords').val(selected).trigger('change');
-                Swal.fire('Success', data.message || 'Keyword added', 'success');
-            } else {
-                Swal.fire('Error', (data && data.message) ? data.message : 'Failed to add keyword', 'error');
-            }
-        });
-    });
+    // Keyword Add/Edit handled by the shared 4-field modal at the bottom of this file
+    // (same look + endpoints as add-song / add-couplet / add-reflection).
 
     // Ensure editor content posts correctly on submit.
     $('#episodeForm').on('submit', function() {
@@ -461,45 +411,200 @@ $(document).ready(function() {
 });
 </script>
 
+<!-- ============================================================
+     KEYWORD ADD/EDIT POPUP — same 4-field modal as add-song /
+     add-couplet / add-reflection / add-filmDetails. Uses
+     SongController::ajax_create_keyword / ajax_get_keyword /
+     ajax_update_keyword endpoints.
+     ============================================================ -->
+<div class="modal fade" id="addNewKeywordModal" tabindex="-1" role="dialog" aria-labelledby="addNewKeywordModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addNewKeywordModalLabel">Add New Keyword</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Original</label>
+                    <input type="text" class="form-control" id="newKeywordOriginal" placeholder="Enter Original Keyword">
+                </div>
+                <div class="form-group">
+                    <label>Translation</label>
+                    <input type="text" class="form-control" id="newKeywordTranslation" placeholder="Enter Keyword Translation">
+                </div>
+                <div class="form-group">
+                    <label>Transliteration</label>
+                    <input type="text" class="form-control" id="newKeywordTransliteration" placeholder="Enter Keyword Transliteration">
+                </div>
+                <div class="form-group">
+                    <label>Word Meaning</label>
+                    <textarea class="form-control" id="newKeywordMeaning" rows="3" placeholder="Enter word meaning"></textarea>
+                </div>
+            </div>
+            <style>
+                #addNewKeywordModal .form-group { display:block !important; align-items:initial !important; }
+                #addNewKeywordModal .form-group > label { display:block !important; flex:none !important; max-width:none !important; width:auto !important; margin-bottom:6px !important; padding-right:0 !important; }
+                #addNewKeywordModal .form-group > *:not(label) { width:100% !important; flex:none !important; }
+                #addNewKeywordModal { z-index: 100050; }
+            </style>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveNewKeywordBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function () {
-  var b = document.getElementById('editKeywordBtn');
-  if (!b) return;
-  b.addEventListener('click', function () {
-    var $sel = $('#related_keywords');
-    var vals = $sel.val() || [];
-    if (!Array.isArray(vals)) vals = [vals];
-    vals = vals.filter(function(v){ return v; });
-    if (vals.length !== 1) {
-      Swal.fire({ icon: 'info', title: 'Pick one', text: 'Please select exactly one keyword to edit.' });
-      return;
+    var BASE = '<?php echo base_url(); ?>';
+    var TARGET_SELECT = '#related_keywords';
+
+    function kwRead() {
+        return {
+            word_original:        ($('#newKeywordOriginal').val() || '').trim(),
+            word_translation:     ($('#newKeywordTranslation').val() || '').trim(),
+            word_transliteration: ($('#newKeywordTransliteration').val() || '').trim(),
+            glossary_meaning:     ($('#newKeywordMeaning').val() || '').trim()
+        };
     }
-    var id = String(vals[0]);
-    var $opt = $sel.find('option[value="' + id.replace(/(["\\])/g,'\\$1') + '"]');
-    var current = $.trim($opt.text());
-    Swal.fire({
-      title: 'Edit Keyword',
-      html: '<div class="form-group"><label>Transliteration</label><input id="swal-edit-translit" class="swal2-input" placeholder="Enter Keyword Transliteration"></div>',
-      didOpen: function() { document.getElementById('swal-edit-translit').value = current; },
-      showCancelButton: true, confirmButtonText: 'Update',
-      preConfirm: function() {
-        var t = document.getElementById('swal-edit-translit').value.trim();
-        if (!t) { Swal.showValidationMessage('Transliteration is required'); return false; }
-        return t;
-      }
-    }).then(function(res){
-      if (!res.isConfirmed) return;
-      $.post('<?php echo base_url("song/ajax_update_keyword"); ?>', { id: id, word_transliteration: res.value }, function(resp){
-        if (resp && (resp.success === true || resp.status === 'success')) {
-          $opt.text(resp.word_transliteration || res.value);
-          window.__adminRefreshSelect($sel, id);
-          Swal.fire({ icon:'success', title:'Updated', timer:1100, showConfirmButton:false });
-        } else {
-          Swal.fire({ icon:'error', title:'Error', text:(resp && resp.message) || 'Update failed' });
-        }
-      }, 'json').fail(function(){ Swal.fire({ icon:'error', title:'Network error' }); });
+    function kwClear() {
+        ['newKeywordOriginal','newKeywordTranslation','newKeywordTransliteration','newKeywordMeaning'].forEach(function (id) {
+            var el = document.getElementById(id); if (el) el.value = '';
+        });
+    }
+    function showModal() {
+        var $m = $('#addNewKeywordModal');
+        $('.modal-backdrop').remove();
+        $m.css('display','block').removeAttr('aria-hidden').attr('aria-modal','true').attr('role','dialog');
+        void $m[0].offsetWidth;
+        $m.addClass('show');
+        $('body').addClass('modal-open');
+        $('body').append('<div class="modal-backdrop fade show __kw_backdrop"></div>');
+        $m.find('.modal-title').text('Add New Keyword');
+        $m.find('.__kw_update_btn').remove();
+        $('#saveNewKeywordBtn').show();
+        setTimeout(function(){ var f = document.getElementById('newKeywordTransliteration'); if (f) f.focus(); }, 150);
+    }
+    function hideModal() {
+        var $m = $('#addNewKeywordModal');
+        $m.removeClass('show').css('display','none').attr('aria-hidden','true').removeAttr('aria-modal');
+        $('.__kw_backdrop, .modal-backdrop').remove();
+        if (!$('.modal.show').length) $('body').removeClass('modal-open');
+        $m.find('.modal-title').text('Add New Keyword');
+        $m.find('.__kw_update_btn').remove();
+        $('#saveNewKeywordBtn').show();
+    }
+    $('#addNewKeywordModal').on('click', '[data-dismiss="modal"], .close', function (e) {
+        e.preventDefault(); hideModal();
     });
-  });
+
+    // Add New
+    $('#addNewKeywordBtn').on('click', function (e) {
+        e.preventDefault();
+        kwClear();
+        showModal();
+    });
+    $(document).on('click', '#saveNewKeywordBtn', async function () {
+        var fields = kwRead();
+        if (!fields.word_transliteration) { alert('Transliteration is required!'); return; }
+        var $btn = $(this).prop('disabled', true);
+        try {
+            var body = new URLSearchParams();
+            Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+            var res = await fetch(BASE + 'SongController/ajax_create_keyword', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
+            });
+            var data = await res.json();
+            if (data && data.success) {
+                var $sel = $(TARGET_SELECT);
+                var $opt = $sel.find('option[value="' + String(data.id).replace(/(["\\])/g,'\\$1') + '"]');
+                if ($opt.length) {
+                    $opt.text(data.word_transliteration || fields.word_transliteration);
+                } else {
+                    $sel.append(new Option(data.word_transliteration || fields.word_transliteration, data.id));
+                }
+                if (window.__adminRefreshSelect) window.__adminRefreshSelect(TARGET_SELECT, String(data.id));
+                else $sel.trigger('change');
+                hideModal();
+                if (window.Swal) Swal.fire({icon:'success', title:'Keyword saved!', timer:1200, showConfirmButton:false});
+            } else {
+                alert('Failed: ' + (data && data.message ? data.message : 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            $btn.prop('disabled', false);
+        }
+    });
+
+    // Edit
+    $('#editKeywordBtn').on('click', function (e) {
+        e.preventDefault();
+        var $sel = $(TARGET_SELECT);
+        var vals = $sel.val() || [];
+        if (!Array.isArray(vals)) vals = [vals];
+        vals = vals.filter(function (v) { return v; });
+        if (vals.length !== 1) {
+            if (window.Swal) Swal.fire({icon:'info', title:'Pick one', text:'Please select exactly one keyword to edit.'});
+            else alert('Please select exactly one keyword to edit.');
+            return;
+        }
+        var id = String(vals[0]);
+        kwClear();
+        showModal();
+        $('#addNewKeywordModal .modal-title').text('Edit Keyword');
+        $('#saveNewKeywordBtn').hide();
+        var $update = $('<button type="button" class="btn btn-primary __kw_update_btn">Update</button>');
+        $('#addNewKeywordModal .modal-footer').append($update);
+
+        $.post(BASE + 'song/ajax_get_keyword', { id: id }, function (resp) {
+            if (!resp || (resp.success !== true && resp.status !== 'success')) return;
+            $('#newKeywordOriginal').val(resp.word_original || '');
+            $('#newKeywordTranslation').val(resp.word_translation || '');
+            $('#newKeywordTransliteration').val(resp.word_transliteration || '');
+            $('#newKeywordMeaning').val(resp.glossary_meaning || '');
+        }, 'json');
+
+        $update.on('click', async function () {
+            var fields = kwRead();
+            if (!fields.word_transliteration) { alert('Transliteration is required!'); return; }
+            $update.prop('disabled', true).text('Updating...');
+            try {
+                var body = new URLSearchParams();
+                body.append('id', id);
+                Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+                var res = await fetch(BASE + 'song/ajax_update_keyword', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: body.toString()
+                });
+                var data = await res.json();
+                if (data && (data.success === true || data.status === 'success')) {
+                    var $opt = $sel.find('option[value="' + id.replace(/(["\\])/g,'\\$1') + '"]');
+                    if ($opt.length) $opt.text(data.word_transliteration || fields.word_transliteration);
+                    if (window.__adminRefreshSelect) window.__adminRefreshSelect(TARGET_SELECT, id);
+                    hideModal();
+                    if (window.Swal) Swal.fire({icon:'success', title:'Updated', timer:1100, showConfirmButton:false});
+                } else {
+                    alert('Failed: ' + (data && data.message ? data.message : 'Update failed'));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                $update.prop('disabled', false).text('Update');
+            }
+        });
+    });
+
+    // ----- Delete button (helper in footer.php loads after; defer via $(function)). -----
+    $(function () {
+        if (!window.__bindAdminDelete) return;
+        __bindAdminDelete('deleteKeywordBtn', { selectId: '#related_keywords', entity: 'word', label: 'Keyword' });
+    });
 })();
 </script>
 <?php include('inc/footer.php'); ?>

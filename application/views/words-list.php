@@ -94,7 +94,7 @@ $(document).ready(function() {
                 searchable: false,
                 render: function(data) {
                     return `
-                        <a href="<?= base_url('word/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
+                        ${__adminPreviewBtn(data)}<a href="<?= base_url('word/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
                         <button class="btn btn-sm btn-danger delete-word" data-id="${data}">Delete</button>
                     `;
                 }

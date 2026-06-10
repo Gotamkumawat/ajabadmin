@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 <th style="width:50px;">Sl.No</th>
                                 <th>Poem Title (Transliteration)</th>
                                 <th>Poem Title (Translation)</th>
-                                <th>Poet OR Attributed Poet (appearing in same column)</th>
+                                <th>Poet OR Attributed Poet</th>
                                 <!-- <th>Show on landing Page</th> -->
                                 <th>Published</th>
                                 <th>Action</th>
@@ -90,9 +90,9 @@ $(document).ready(function() {
         },
         columns: [
             { data: null, title: 'Sl.No', orderable: false, searchable: false, width: '50px', render: function(d,t,r,m){ return m.row + 1 + m.settings._iDisplayStart; } },
-            { data: 'couplet_transliteration', title: 'Poem Title (Transliteration)' },
-            { data: 'couplet_translation', title: 'Poem Title (Translation)' },
-            { data: 'poet_id', title: 'Poet OR Attributed Poet (appearing in same column)' },
+            { data: 'couplet_translation', title: 'Poem Title (Transliteration)' },
+            { data: 'couplet_transliteration', title: 'Poem Title (Translation)' },
+            { data: 'poet_id', title: 'Poet OR Attributed Poet' },
             // { data: 'show_on_landing_page', title: 'Show on landing Page' },
             { data: 'is_published', title: 'Published' },
             { data: 'action', title: 'Action', orderable: false, searchable: false }

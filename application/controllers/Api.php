@@ -28,6 +28,52 @@ class Api extends CI_Controller {
         return array_values(array_unique($ids));
     }
 
+    /**
+     * Build the short "about" excerpt used in the All Films list, Search Results,
+     * and Related Sections. Rules (per frontend display):
+     *   1) Take ONLY the first paragraph of the about text.
+     *   2) Strip HTML so cards show clean text.
+     *   3) Cap at $limit words (default 100); append an ellipsis if truncated.
+     *
+     * The first paragraph is detected as the text up to the first blank line
+     * (double newline) or the first closing </p>, whichever comes first.
+     */
+    private function film_about_excerpt($value, $limit = 100) {
+        $text = (string) $value;
+        if (trim($text) === '') {
+            return '';
+        }
+
+        // 1) First paragraph: split on the first </p> ... or the first blank line.
+        $firstPara = $text;
+        if (preg_match('#^(.*?)</p\s*>#is', $text, $m)) {
+            $firstPara = $m[1];
+        } else {
+            // Normalise newlines, then cut at the first blank line.
+            $normalized = preg_replace("/\r\n|\r/", "\n", $text);
+            $parts = preg_split("/\n\s*\n/", $normalized, 2);
+            if ($parts !== false && isset($parts[0])) {
+                $firstPara = $parts[0];
+            }
+        }
+
+        // 2) Strip HTML tags and decode entities to plain text, collapse whitespace.
+        $plain = trim(html_entity_decode(strip_tags($firstPara), ENT_QUOTES, 'UTF-8'));
+        $plain = preg_replace('/\s+/u', ' ', $plain);
+        if ($plain === '') {
+            return '';
+        }
+
+        // 3) Word cap.
+        if ($limit > 0) {
+            $words = explode(' ', $plain);
+            if (count($words) > $limit) {
+                $plain = implode(' ', array_slice($words, 0, $limit)) . '…';
+            }
+        }
+        return $plain;
+    }
+
     private function csv_text_tokens($value) {
         $parts = array_filter(array_map('trim', explode(',', (string) $value)));
         $tokens = [];
@@ -528,11 +574,14 @@ class Api extends CI_Controller {
 
         // --------------------------------------------
         // 1. Total count (FOR pagination)
+        //
+        // NOTE: Count must be over DISTINCT reflection.id — a LEFT JOIN onto
+        // reflection_person multiplies rows when a reflection has multiple
+        // speakers, which made the total skew higher than the real count.
+        // We DON'T join here; filters only need the reflection table.
         // --------------------------------------------
 
         $this->db->from('reflection');
-        $this->db->join('reflection_person rp', 'rp.reflection_id = reflection.id', 'left');
-        $this->db->join('person p', 'p.id = rp.person_id', 'left');
 
         if ($by_speaker != "") {
             $this->db->where('reflection.speaker_id', (int)$by_speaker);
@@ -805,6 +854,14 @@ class Api extends CI_Controller {
             $f->director_names_hindi   = isset($directorsByFilm[$fid]) ? array_values(array_unique($directorsByFilm[$fid]['hi'])) : [];
             $f->director_name_english  = !empty($f->director_names_english) ? implode(', ', $f->director_names_english) : '';
             $f->director_name_hindi    = !empty($f->director_names_hindi)   ? implode(', ', $f->director_names_hindi)   : '';
+
+            // All Films list shows only the first paragraph of "about", capped at
+            // 100 words (matches the frontend card display). The admin "about"
+            // field lives in film.about_text; expose the trimmed text on both keys.
+            $aboutExcerpt = $this->film_about_excerpt($f->about_text ?? '', 100);
+            $f->about_text = $aboutExcerpt;
+            $f->about      = $aboutExcerpt;
+
             $data[] = $f;
         }
 
@@ -910,15 +967,40 @@ header('Content-Type: application/json; charset=utf-8');
 
 
     ////////////////////////////////
+    // 5️⃣ FIRST POEM (from couplet table — NOT film)
+    ////////////////////////////////
+    $poem = null;
+    if ($this->db->table_exists('couplet')) {
+        $this->db->select("
+            couplet.id,
+            couplet.original_title,
+            couplet.couplet_transliteration,
+            couplet.couplet_translation,
+            couplet.thumbnail_url,
+            couplet.note_text,
+            CONCAT(p.first_name, ' ', COALESCE(p.middle_name,''), ' ', COALESCE(p.last_name,'')) AS poet_name_english,
+            CONCAT(p.first_name_in_hindi, ' ', COALESCE(p.middle_name_in_hindi,''), ' ', COALESCE(p.last_name_in_hindi,'')) AS poet_name_hindi
+        ");
+        $this->db->from('couplet');
+        $this->db->join('couplet_poet cp', 'cp.couplet_id = couplet.id', 'left');
+        $this->db->join('person p', 'p.id = cp.poet_id', 'left');
+        // Latest couplet — `couplet.id DESC` is the safest ordering across all schemas.
+        $this->db->order_by('couplet.id', 'DESC');
+        $this->db->group_by('couplet.id');
+        $this->db->limit(1);
+        $poem = $this->db->get()->row();
+    }
+
+    ////////////////////////////////
     // FINAL COMBINED JSON OUTPUT
     ////////////////////////////////
     echo json_encode([
-        "status" => true,
-        "song" => $song,
+        "status"     => true,
+        "song"       => $song,
         "reflection" => $reflection,
-        "person" => $person,
-        "film" => $film,
-        "poem" => $film
+        "person"     => $person,
+        "film"       => $film,
+        "poem"       => $poem
     ]);
 }
 
@@ -931,21 +1013,18 @@ public function poems()
     header('Content-Type: application/json; charset=utf-8');
 
     // GET params
-    $theme  = $this->input->get('theme');
-    $poet   = $this->input->get('poet');
+    $theme = $this->input->get('theme');
+    $poet  = $this->input->get('poet');
+    $page  = $this->input->get('page');
+    $limit = $this->input->get('limit');
 
-    // FIX: null/undefined → empty
-    if ($theme === "null" || $theme === "undefined" || $theme === null || $theme === "") {
-        $theme = "";
-    }
-    if ($poet === "null" || $poet === "undefined" || $poet === null || $poet === "") {
-        $poet = "";
-    }
+    // null/undefined → empty
+    if ($theme === "null" || $theme === "undefined" || $theme === null || $theme === "") { $theme = ""; }
+    if ($poet  === "null" || $poet  === "undefined" || $poet  === null || $poet  === "") { $poet  = ""; }
 
     // Pagination defaults
-    $page  = (!empty($page)  && is_numeric($page))  ? $page  : 1;
-    $limit = (!empty($limit) && is_numeric($limit)) ? $limit : 10;
-
+    $page  = (!empty($page)  && is_numeric($page))  ? (int) $page  : 1;
+    $limit = (!empty($limit) && is_numeric($limit)) ? (int) $limit : 10;
     $offset = ($page - 1) * $limit;
 
     // ========================================
@@ -983,9 +1062,12 @@ public function poems()
 
     echo json_encode([
         "status"       => true,
+        "page"         => $page,
+        "limit"        => $limit,
         "theme"        => $theme,
         "poet"         => $poet,
         "total"        => $total,
+        "total_pages"  => (int) ceil($total / max(1, $limit)),
         "data"         => $data
     ]);
 }
@@ -1887,7 +1969,7 @@ public function home()
         ]);
 }
 
-public function nitesh()
+public function search()
 {
     header("Access-Control-Allow-Origin: *");
     header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
@@ -2033,6 +2115,13 @@ public function nitesh()
     $this->db->order_by('film.year_of_production', 'DESC');
     $this->db->limit(10);
     $films = $this->db->get()->result();
+    // Search Results show only the first paragraph of "about" (film.about_text),
+    // capped at 100 words to match the frontend display. Mirror onto `about` too.
+    foreach ($films as $f) {
+        $aboutExcerpt = $this->film_about_excerpt($f->about_text ?? '', 100);
+        $f->about_text = $aboutExcerpt;
+        $f->about      = $aboutExcerpt;
+    }
     $results['films'] = $films;
     $counts['films'] = count($films);
 
@@ -2069,32 +2158,55 @@ public function song_versions()
             return;
         }
 
-        // Fetch umbrellaTitle for given song_id
-        $row = $this->db->select('umbrellaTitle')->get_where('songs', ['id' => (int)$song_id])->row();
-        if (empty($row) || empty($row->umbrellaTitle)) {
-            echo json_encode([
-                "status" => false,
-                "message" => "Song not found or umbrellaTitle is empty."
-            ]);
+        // Resolve the umbrella title for this song. The canonical `song` table
+        // links to it via FK (umbrella_title_id → title.id); the legacy `songs`
+        // table denormalises the title text into an `umbrellaTitle` column.
+        // We handle BOTH schemas so this endpoint works regardless of which
+        // table is active.
+        $songTable = $this->SongModel->song_table_name();
+        $songCols  = $this->db->table_exists($songTable) ? $this->db->list_fields($songTable) : [];
+        $hasFkCol  = in_array('umbrella_title_id', $songCols, true);
+        $hasTextCol = in_array('umbrellaTitle', $songCols, true);
+
+        $umbrellaText = '';
+        $umbrellaId   = 0;
+        $thisSongRow  = $this->db->get_where($songTable, ['id' => (int) $song_id])->row_array();
+        if (!$thisSongRow) {
+            echo json_encode(["status" => false, "message" => "Song not found."]);
+            return;
+        }
+        if ($hasFkCol && !empty($thisSongRow['umbrella_title_id'])) {
+            $umbrellaId = (int) $thisSongRow['umbrella_title_id'];
+            if ($this->db->table_exists('title')) {
+                $titleRow = $this->db->get_where('title', ['id' => $umbrellaId])->row_array();
+                if ($titleRow) {
+                    $umbrellaText = trim((string) ($titleRow['english_transliteration'] ?? $titleRow['original_title'] ?? ''));
+                }
+            }
+        } elseif ($hasTextCol && !empty($thisSongRow['umbrellaTitle'])) {
+            $umbrellaText = trim((string) $thisSongRow['umbrellaTitle']);
+        }
+        if ($umbrellaText === '' && $umbrellaId === 0) {
+            echo json_encode(["status" => false, "message" => "Song has no umbrella title."]);
             return;
         }
 
-        $umbrella = $row->umbrellaTitle;
-
-        // Get all songs that share the same umbrellaTitle
-        $songTable = $this->SongModel->song_table_name();
-        $idRows = $this->db->select('id')
-            ->from($songTable)
-            ->where('umbrellaTitle', $umbrella)
-            ->where('id !=', (int)$song_id)
-            ->order_by('id', 'DESC')
-            ->get()
-            ->result();
+        // Find sibling songs that share the same umbrella title.
+        $this->db->select('id')->from($songTable)->where('id !=', (int) $song_id);
+        if ($hasFkCol && $umbrellaId > 0) {
+            $this->db->where('umbrella_title_id', $umbrellaId);
+        } elseif ($hasTextCol && $umbrellaText !== '') {
+            $this->db->where('umbrellaTitle', $umbrellaText);
+        } else {
+            echo json_encode(["status" => true, "umbrellaTitle" => $umbrellaText, "count" => 0, "data" => []]);
+            return;
+        }
+        $idRows  = $this->db->order_by('id', 'DESC')->get()->result();
         $results = $this->map_song_rows_to_admin_shape($idRows);
 
         echo json_encode([
             "status" => true,
-            "umbrellaTitle" => $umbrella,
+            "umbrellaTitle" => $umbrellaText,
             "count" => count($results),
             "data" => $results
         ]);
@@ -2484,6 +2596,7 @@ public function song_versions()
             film.english_transliteration,
             film.year_of_production,
             film.thumbnail_url,
+            film.about_text,
             CONCAT(p.first_name, ' ', COALESCE(p.middle_name,''), ' ', COALESCE(p.last_name,'')) AS director_name
         ")
         ->from('film')
@@ -2493,6 +2606,13 @@ public function song_versions()
         ->group_by('film.id')
         ->limit(5)
         ->get()->result();
+        // Related Sections show only the first paragraph of "about" (film.about_text),
+        // capped at 100 words to match the frontend display. Mirror onto `about` too.
+        foreach ($films as $f) {
+            $aboutExcerpt = $this->film_about_excerpt($f->about_text ?? '', 100);
+            $f->about_text = $aboutExcerpt;
+            $f->about      = $aboutExcerpt;
+        }
         $results['films'] = $films;
         $counts['films'] = count($films);
 

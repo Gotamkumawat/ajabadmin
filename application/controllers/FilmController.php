@@ -3,13 +3,36 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class FilmController extends CI_Controller {
 
+    // Word limits enforced on the server side to mirror the frontend caps in
+    // application/views/inc/footer.php (LIMIT_RULES). Keep these in sync.
+    const SERIES_DESCRIPTION_WORD_LIMIT = 100;
+
     public function __construct() {
         parent::__construct();
         $this->load->database(); // Database connect
-        $this->load->helper('url'); 
+        $this->load->helper('url');
         $this->load->model('FilmModel'); // Model load
         $this->load->model('WordModel');
         $this->load->library('session'); // Load session library for flash messages
+    }
+
+    /**
+     * Trim a string to at most $limit whitespace-separated words.
+     * Mirrors the frontend hard cap so submissions that bypass the UI
+     * (curl, browser tools, etc.) still respect the limit.
+     */
+    private function clamp_words($value, $limit) {
+        $s = trim((string) $value);
+        if ($s === '' || $limit <= 0) {
+            return $s;
+        }
+        // Collapse internal whitespace to a single space for an accurate word count.
+        $normalized = preg_replace('/\s+/u', ' ', $s);
+        $words = explode(' ', $normalized);
+        if (count($words) <= $limit) {
+            return $s;
+        }
+        return implode(' ', array_slice($words, 0, $limit));
     }
 
   public function add_film() {
@@ -71,7 +94,7 @@ class FilmController extends CI_Controller {
             'main_title' => $this->input->post('main_title'),
             'second_title' => $this->input->post('second_title'),
             'series_title' => $this->input->post('series_title'),
-            'series_description' => $this->input->post('series_description'),
+            'series_description' => $this->clamp_words($this->input->post('series_description'), self::SERIES_DESCRIPTION_WORD_LIMIT),
             'thumbnail_Image' => $thumbnail_Image,
             'thumbnail_excerpt' => $this->input->post('thumbnail_excerpt'),
             'directors' => is_array($this->input->post('directors')) ? implode(',', $this->input->post('directors')) : ($this->input->post('directors') ?? ''),
@@ -177,7 +200,7 @@ class FilmController extends CI_Controller {
             'main_title' => $this->input->post('main_title'),
             'second_title' => $this->input->post('second_title'),
             'series_title' => $this->input->post('series_title'),
-            'series_description' => $this->input->post('series_description'),
+            'series_description' => $this->clamp_words($this->input->post('series_description'), self::SERIES_DESCRIPTION_WORD_LIMIT),
             'thumbnail_Image' => $thumbnail_Image,
             'thumbnail_excerpt' => $this->input->post('thumbnail_excerpt'),
             'directors' => is_array($this->input->post('directors')) ? implode(',', $this->input->post('directors')) : ($this->input->post('directors') ?? ''),

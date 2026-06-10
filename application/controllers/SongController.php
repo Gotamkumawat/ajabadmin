@@ -115,19 +115,53 @@ class SongController extends CI_Controller {
     // AJAX: Create new Song
     public function ajax_create_song() {
         $this->output->set_content_type('application/json');
-        $title = trim($this->input->post('umbrellaTitle'));
+        $title = trim((string) $this->input->post('umbrellaTitle'));
         if ($title === '') {
-                echo json_encode(['status' => 'error', 'message' => 'Song title is required']);
+            echo json_encode(['status' => 'error', 'message' => 'Song title is required']);
             return;
         }
-        $this->db->insert($this->SongModel->song_table_name(), ['Songtitle_transliteration' => $title]);
-        $id = $this->db->insert_id();
-            echo json_encode([
-                'status' => 'success',
-                'message' => 'Song added successfully',
-                'song_id' => $id,
-                'umbrellaTitle' => $title
-            ]);
+
+        $songTable = $this->SongModel->song_table_name();
+        if (!$this->db->table_exists($songTable)) {
+            echo json_encode(['status' => 'error', 'message' => 'song table not found']);
+            return;
+        }
+        $cols = $this->db->list_fields($songTable);
+
+        // Build the insert row by writing into whichever title column the
+        // active schema actually has. Canonical `song` uses umbrella_title_id
+        // (FK to `title`); legacy `songs` has the denormalised text columns.
+        $insertRow = [];
+        if (in_array('umbrella_title_id', $cols, true) && $this->db->table_exists('title')) {
+            $this->db->insert('title', ['english_transliteration' => $title, 'original_title' => $title]);
+            $insertRow['umbrella_title_id'] = (int) $this->db->insert_id();
+            if (in_array('song_title_id', $cols, true)) {
+                $insertRow['song_title_id'] = $insertRow['umbrella_title_id'];
+            }
+        }
+        // Legacy denormalised columns — fill whichever ones exist.
+        foreach (['Songtitle_transliteration', 'umbrellaTitle', 'songTitleOriginal', 'songTitle'] as $legacyCol) {
+            if (in_array($legacyCol, $cols, true)) {
+                $insertRow[$legacyCol] = $title;
+            }
+        }
+
+        if (empty($insertRow)) {
+            echo json_encode(['status' => 'error', 'message' => 'No writable title column found on song table']);
+            return;
+        }
+
+        if (!$this->db->insert($songTable, $insertRow)) {
+            $err = $this->db->error();
+            echo json_encode(['status' => 'error', 'message' => !empty($err['message']) ? $err['message'] : 'Insert failed']);
+            return;
+        }
+        echo json_encode([
+            'status'        => 'success',
+            'message'       => 'Song added successfully',
+            'song_id'       => (int) $this->db->insert_id(),
+            'umbrellaTitle' => $title,
+        ]);
     }
 
     // AJAX: Create new Reflection
@@ -556,7 +590,8 @@ class SongController extends CI_Controller {
                 'singer' => implode(', ', array_values(array_unique($singers))),
                 'poet' => implode(', ', array_values(array_unique($poets))),
                 'published' => $publishedVal,
-                'action' => '<a href="'.base_url('song/edit/'.$row['id']).'" class="btn btn-sm btn-primary">Edit</a>
+                'action' => '<button type="button" class="btn btn-sm btn-info admin-preview-btn" data-id="'.$row['id'].'">Preview</button>
+                            <a href="'.base_url('song/edit/'.$row['id']).'" class="btn btn-sm btn-primary">Edit</a>
                             <a href="'.base_url('song/delete/'.$row['id']).'" class="btn btn-sm btn-danger" onclick="return confirm(\'Are you sure?\')">Delete</a>'
             ];
         }
@@ -747,14 +782,20 @@ class SongController extends CI_Controller {
             return;
         }
 
+        // Split the entered name into first / middle / last:
+        //   1 word  → first only
+        //   2 words → first + last
+        //   3+      → first + middle (everything between) + last
         $parts = preg_split('/\s+/', $name);
         $first = isset($parts[0]) ? $parts[0] : '';
-        if (count($parts) > 1) {
-            $last = array_pop($parts);
-            $middle = implode(' ', $parts);
-        } else {
-            $last = '';
-            $middle = '';
+        $middle = '';
+        $last = '';
+        if (count($parts) === 2) {
+            $last = $parts[1];
+        } elseif (count($parts) > 2) {
+            $last = array_pop($parts);            // strip last word
+            array_shift($parts);                  // strip first word
+            $middle = implode(' ', $parts);       // what's left = middle
         }
 
         $data = [
@@ -924,33 +965,246 @@ class SongController extends CI_Controller {
 
     public function ajax_create_keyword() {
         $this->output->set_content_type('application/json');
-        $word = trim($this->input->post('word_transliteration'));
-        if ($word === '') {
+        $translit = trim((string) $this->input->post('word_transliteration'));
+        $original = trim((string) $this->input->post('word_original'));
+        $translation = trim((string) $this->input->post('word_translation'));
+        $meaning  = trim((string) $this->input->post('glossary_meaning'));
+        if ($translit === '') {
             echo json_encode([
                 'success' => false,
-                'status' => 'error',
-                'message' => 'Keyword required',
+                'status'  => 'error',
+                'message' => 'Transliteration required',
             ]);
             return;
         }
-        $row = $this->WordModel->get_or_create_word_keyword($word);
-        if ($row === null) {
-            echo json_encode([
-                'success' => false,
-                'status' => 'error',
-                'message' => $this->db->table_exists('word') ? 'Failed to save keyword' : 'word table not found',
-            ]);
+        if (!$this->db->table_exists('word')) {
+            echo json_encode(['success' => false, 'status' => 'error', 'message' => 'word table not found']);
             return;
         }
-        $id = $row['id'];
-        $label = $row['word_transliteration'];
+        // Look for an existing word by transliteration so we don't create duplicates.
+        $existing = $this->db->get_where('word', ['word_transliteration' => $translit])->row_array();
+        $row = [
+            'word_transliteration' => $translit,
+            'word_original'        => $original,
+            'word_translation'     => $translation,
+            'glossary_meaning'     => $meaning,
+        ];
+        if ($existing) {
+            $id = (int) $existing['id'];
+            // Update any newly-provided fields without wiping existing non-empty values.
+            $update = [];
+            foreach ($row as $k => $v) {
+                if ($v !== '') { $update[$k] = $v; }
+            }
+            if (!empty($update)) { $this->db->where('id', $id)->update('word', $update); }
+        } else {
+            $this->db->insert('word', $row);
+            $id = (int) $this->db->insert_id();
+        }
         echo json_encode([
             'success' => true,
-            'status' => 'success',
-            'id' => $id,
-            'keyword_id' => $id,
-            'word_transliteration' => $label,
-            'message' => 'Keyword added successfully',
+            'status'  => 'success',
+            'id'      => $id,
+            'keyword_id'           => $id,
+            'word_transliteration' => $translit,
+            'word_original'        => $original,
+            'word_translation'     => $translation,
+            'glossary_meaning'     => $meaning,
+            'message' => 'Keyword saved successfully',
+        ]);
+    }
+
+    /**
+     * Fetch a single word's full data so the Edit popup can pre-fill every field
+     * from the DB (Original / Translation / Transliteration / Word Meaning).
+     */
+    public function ajax_get_keyword() {
+        $this->output->set_content_type('application/json');
+        $id = (int) ($this->input->post('id') ?: $this->input->get('id'));
+        if ($id <= 0) { echo json_encode(['success' => false, 'message' => 'id required']); return; }
+        if (!$this->db->table_exists('word')) { echo json_encode(['success' => false, 'message' => 'word table not found']); return; }
+        $row = $this->db->select('id, word_original, word_translation, word_transliteration, glossary_meaning')
+            ->get_where('word', ['id' => $id])->row_array();
+        if (!$row) { echo json_encode(['success' => false, 'message' => 'not found']); return; }
+        echo json_encode([
+            'success' => true,
+            'status'  => 'success',
+            'id'      => (int) $row['id'],
+            'word_original'        => (string) $row['word_original'],
+            'word_translation'     => (string) $row['word_translation'],
+            'word_transliteration' => (string) $row['word_transliteration'],
+            'glossary_meaning'     => (string) $row['glossary_meaning'],
+        ]);
+    }
+
+    /**
+     * Fetch a single person row so the Edit popup (Singer / Poet / Attributed
+     * Poet / Translator / Director / Speaker) can pre-fill BOTH the name AND
+     * the optional hyperlink from the database.
+     */
+    public function ajax_get_person() {
+        $this->output->set_content_type('application/json');
+        $id = (int) ($this->input->post('id') ?: $this->input->get('id'));
+        if ($id <= 0) { echo json_encode(['success' => false, 'message' => 'id required']); return; }
+        $cols = $this->db->list_fields('person');
+        $select = ['id', 'first_name', 'middle_name', 'last_name'];
+        if (in_array('hyperlink', $cols, true)) { $select[] = 'hyperlink'; }
+        $row = $this->db->select(implode(',', $select))->get_where('person', ['id' => $id])->row_array();
+        if (!$row) { echo json_encode(['success' => false, 'message' => 'not found']); return; }
+        $parts = array_filter([
+            trim((string) ($row['first_name']  ?? '')),
+            trim((string) ($row['middle_name'] ?? '')),
+            trim((string) ($row['last_name']   ?? '')),
+        ], 'strlen');
+        $name = implode(' ', $parts);
+        echo json_encode([
+            'success'   => true,
+            'status'    => 'success',
+            'id'        => (int) $row['id'],
+            'name'      => $name,
+            'fullName'  => $name,
+            'hyperlink' => (string) ($row['hyperlink'] ?? ''),
+        ]);
+    }
+
+    /**
+     * Like ajax_get_person but for the glossary-word modal: returns all 4
+     * fields (original / translation / transliteration / meaning) so the Edit
+     * popup pre-fills everything from the database.
+     */
+    public function ajax_get_glossary_word() {
+        // Same shape as ajax_get_keyword — they read the same `word` table.
+        $this->ajax_get_keyword();
+    }
+
+    /**
+     * Admin-wide safe delete used by the "Delete" button next to Add/Edit
+     * on every select field across the admin forms.
+     *
+     * Accepts POST { entity, id }. `entity` is one of:
+     *   person   → deletes from `person` table (Singer/Poet/Translator/Director/Speaker/etc.)
+     *   word     → deletes from `word` table   (Keyword/Glossary word)
+     *   category → deletes from `category` table (Occupation / Profile Tag)
+     *
+     * Before deleting, we count how many other rows reference this id in known
+     * junction/foreign-key tables. If any reference exists, the delete is
+     * rejected with the count so the admin can clean up the links first.
+     * This prevents the "broken option" problem where a record disappears but
+     * is still listed as a CSV id on songs/couplets/etc.
+     */
+    public function ajax_delete_entity() {
+        $this->output->set_content_type('application/json');
+        $entity = strtolower(trim((string) $this->input->post('entity')));
+        $id     = (int) $this->input->post('id');
+        if ($id <= 0) { echo json_encode(['success' => false, 'message' => 'Invalid id']); return; }
+
+        // entity → [primary_table, [ [ref_table, ref_column, friendly_name], ... ]]
+        $registry = [
+            'person'   => [
+                'table' => 'person',
+                'refs'  => [
+                    ['song_singer',                    'singer_id',  'songs (as singer)'],
+                    ['song_poet',                      'poet_id',    'songs (as poet)'],
+                    ['song_person',                    'person_id',  'songs (other roles)'],
+                    ['couplet_poet',                   'poet_id',    'couplets (as poet)'],
+                    ['couplet_people',                 'person_id',  'couplets (other roles)'],
+                    ['couplet_translation_translators','person_id',  'couplet translators'],
+                    ['reflection_person',              'person_id',  'reflections'],
+                    ['film_director',                  'director_id','films (as director)'],
+                    ['film_episode_director',          'director_id','film episodes (as director)'],
+                    ['film_episode_people',            'person_id',  'film episodes (people)'],
+                    ['film_primary_people',            'person_id',  'films (primary people)'],
+                    ['film_secondary_people',          'person_id',  'films (secondary people)'],
+                    ['story_author',                   'person_id',  'stories (as author)'],
+                    ['story_people',                   'person_id',  'stories (people)'],
+                    ['word_person',                    'person_id',  'words'],
+                    ['contribute_people',              'person_id',  'contributions'],
+                    ['person_category',                'person_id',  'category links'],
+                ],
+            ],
+            'word'     => [
+                'table' => 'word',
+                'refs'  => [
+                    ['song_word',         'word_id', 'songs'],
+                    ['couplet_word',      'word_id', 'couplets'],
+                    ['echo_word',         'word_id', 'echoes'],
+                    ['film_episode_word', 'word_id', 'film episodes'],
+                    ['film_primary_word', 'word_id', 'films (primary)'],
+                    ['film_secondary_word','word_id','films (secondary)'],
+                    ['related_words',     'word_id', 'related words'],
+                    ['story_word',        'word_id', 'stories'],
+                    ['word_introduction', 'word_id', 'word introductions'],
+                    ['word_person',       'word_id', 'people'],
+                    ['word_reflection',   'word_id', 'reflections'],
+                    ['word_synonyms',     'word_id', 'synonyms'],
+                    ['word_writer',       'word_id', 'writers'],
+                    ['contribute_word',   'word_id', 'contributions'],
+                ],
+            ],
+            'category' => [
+                'table' => 'category',
+                'refs'  => [
+                    ['person_category', 'category_id', 'people'],
+                    ['title',           'category_id', 'titles'],
+                ],
+            ],
+            'title'    => [
+                // Umbrella Title — used as song.umbrella_title_id / song.song_title_id.
+                // We can't easily know which sibling-id row in the duplicate group is
+                // referenced, so we check both columns on the songs/song tables.
+                'table' => 'title',
+                'refs'  => [
+                    ['song',  'umbrella_title_id', 'songs (as umbrella title)'],
+                    ['song',  'song_title_id',     'songs (as song title)'],
+                    ['songs', 'umbrella_title_id', 'songs legacy (as umbrella title)'],
+                    ['songs', 'song_title_id',     'songs legacy (as song title)'],
+                ],
+            ],
+        ];
+
+        if (!isset($registry[$entity])) {
+            echo json_encode(['success' => false, 'message' => 'Unsupported entity']); return;
+        }
+        $cfg = $registry[$entity];
+        if (!$this->db->table_exists($cfg['table'])) {
+            echo json_encode(['success' => false, 'message' => 'Table not found']); return;
+        }
+        // Confirm the row actually exists.
+        $row = $this->db->where('id', $id)->get($cfg['table'])->row();
+        if (!$row) {
+            echo json_encode(['success' => false, 'message' => 'Record not found']); return;
+        }
+
+        // Check every junction/reference table — if ANY still points at this id, refuse.
+        // Skip tables that don't exist OR are missing the expected column (the schema
+        // varies between legacy `songs` and modern `song`, so being defensive avoids
+        // "Unknown column" DB errors that would otherwise turn the JSON response
+        // into an HTML 500 page).
+        $blockers = [];
+        foreach ($cfg['refs'] as $ref) {
+            list($refTable, $refCol, $friendly) = $ref;
+            if (!$this->db->table_exists($refTable)) { continue; }
+            $cols = $this->db->list_fields($refTable);
+            if (!in_array($refCol, $cols, true)) { continue; }
+            $cnt = (int) $this->db->where($refCol, $id)->count_all_results($refTable);
+            if ($cnt > 0) { $blockers[] = $friendly . ' (' . $cnt . ')'; }
+        }
+        if (!empty($blockers)) {
+            echo json_encode([
+                'success' => false,
+                'in_use'  => true,
+                'message' => 'Cannot delete — this item is still linked to: ' . implode(', ', $blockers) . '. Please remove those links first.',
+                'blockers'=> $blockers,
+            ]);
+            return;
+        }
+
+        $this->db->where('id', $id)->delete($cfg['table']);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Deleted successfully',
+            'id'      => $id,
+            'entity'  => $entity,
         ]);
     }
 
@@ -963,10 +1217,19 @@ class SongController extends CI_Controller {
         if ($id <= 0 || $name === '') {
             echo json_encode(['success' => false, 'message' => 'id and name are required']); return;
         }
+        // Same name-splitting rule as ajax_create_person: 1 word → first only,
+        // 2 words → first + last, 3+ words → first + middle + last.
         $parts = preg_split('/\s+/', $name);
         $first = isset($parts[0]) ? $parts[0] : '';
-        if (count($parts) > 1) { $last = array_pop($parts); $middle = implode(' ', $parts); }
-        else { $last = ''; $middle = ''; }
+        $middle = '';
+        $last = '';
+        if (count($parts) === 2) {
+            $last = $parts[1];
+        } elseif (count($parts) > 2) {
+            $last = array_pop($parts);
+            array_shift($parts);
+            $middle = implode(' ', $parts);
+        }
         $data = ['first_name' => $first, 'middle_name' => $middle, 'last_name' => $last];
         $hyperlink = $this->input->post('hyperlink');
         if ($hyperlink !== null && in_array('hyperlink', $this->db->list_fields('person'), true)) {
@@ -1027,14 +1290,31 @@ class SongController extends CI_Controller {
 
     public function ajax_update_keyword() {
         $this->output->set_content_type('application/json');
-        $id = (int)$this->input->post('id');
-        $word = trim((string)$this->input->post('word_transliteration'));
-        if ($id <= 0 || $word === '') {
-            echo json_encode(['success' => false, 'status' => 'error', 'message' => 'id and word required']); return;
+        $id       = (int) $this->input->post('id');
+        $translit = trim((string) $this->input->post('word_transliteration'));
+        $original = $this->input->post('word_original');
+        $translation = $this->input->post('word_translation');
+        $meaning  = $this->input->post('glossary_meaning');
+        if ($id <= 0 || $translit === '') {
+            echo json_encode(['success' => false, 'status' => 'error', 'message' => 'id and transliteration required']); return;
         }
         if (!$this->db->table_exists('word')) { echo json_encode(['success' => false, 'status' => 'error', 'message' => 'word table not found']); return; }
-        $this->db->where('id', $id)->update('word', ['word_transliteration' => $word]);
-        echo json_encode(['success' => true, 'status' => 'success', 'id' => $id, 'word_transliteration' => $word]);
+        // Only update keys that were actually posted, so absent fields in the request
+        // don't accidentally wipe existing DB values.
+        $update = ['word_transliteration' => $translit];
+        if ($original    !== null) { $update['word_original']    = trim((string) $original); }
+        if ($translation !== null) { $update['word_translation'] = trim((string) $translation); }
+        if ($meaning     !== null) { $update['glossary_meaning'] = trim((string) $meaning); }
+        $this->db->where('id', $id)->update('word', $update);
+        echo json_encode([
+            'success' => true,
+            'status'  => 'success',
+            'id'      => $id,
+            'word_transliteration' => $translit,
+            'word_original'        => isset($update['word_original'])    ? $update['word_original']    : null,
+            'word_translation'     => isset($update['word_translation']) ? $update['word_translation'] : null,
+            'glossary_meaning'     => isset($update['glossary_meaning']) ? $update['glossary_meaning'] : null,
+        ]);
     }
 
     private function _radio_resolve_singer_csv($singer_field) {

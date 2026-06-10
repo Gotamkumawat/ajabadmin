@@ -739,19 +739,58 @@ include('inc/sidebar.php');
                                         } elseif (isset($song['umbrella_title_id']) && $song['umbrella_title_id'] !== '') {
                                             $selected_umbrellaTitle = [(string)$song['umbrella_title_id']];
                                         }
-                                        // Old DB relation: song.umbrella_title_id -> title.id
-                                        $umbrella_rows = $this->db->query("SELECT id, english_transliteration, original_title FROM title ORDER BY english_transliteration ASC, original_title ASC")->result();
+
+                                        // ============================================================
+                                        // Group titles by name so the same Umbrella Title doesn't appear
+                                        // multiple times. DB has many rows with identical
+                                        // english_transliteration/original_title (one per language/version);
+                                        // we collapse them into a single option using the MIN(id) as the
+                                        // canonical value, and keep a sibling-ID map so a song already
+                                        // linked to any of the merged ids still shows up as selected.
+                                        // Grouping key = lowercased trimmed transliteration (falls back to original).
+                                        // ============================================================
+                                        $umbrella_raw_rows = $this->db->query(
+                                            "SELECT id, english_transliteration, original_title
+                                             FROM title
+                                             ORDER BY english_transliteration ASC, original_title ASC, id ASC"
+                                        )->result();
+
+                                        $umbrella_rows  = [];   // de-duplicated rows for the <select>
+                                        $umbrella_alias = [];   // sibling-id => canonical-id  (for preselect mapping)
+                                        $umbrella_seen  = [];   // group-key  => canonical-id
+
+                                        foreach ($umbrella_raw_rows as $row) {
+                                            $label = trim((string) $row->english_transliteration);
+                                            if ($label === '') { $label = trim((string) $row->original_title); }
+                                            if ($label === '') { continue; } // skip totally empty rows
+                                            $key = mb_strtolower($label);
+                                            $rid = (string) $row->id;
+                                            if (!isset($umbrella_seen[$key])) {
+                                                $umbrella_seen[$key] = $rid;     // canonical id = first (smallest) id for this name
+                                                $umbrella_rows[] = (object) [
+                                                    'id'    => $rid,
+                                                    'label' => $label,
+                                                ];
+                                            }
+                                            // Always record the alias mapping (canonical maps to itself too).
+                                            $umbrella_alias[$rid] = $umbrella_seen[$key];
+                                        }
+
+                                        // Map any selected id to its canonical id so the option shows up selected
+                                        // even if the song row stores a non-canonical (sibling) id.
+                                        $selected_umbrellaTitle_canon = [];
+                                        foreach ($selected_umbrellaTitle as $sid) {
+                                            $sid = (string) $sid;
+                                            if ($sid === '') { continue; }
+                                            $selected_umbrellaTitle_canon[] = isset($umbrella_alias[$sid]) ? $umbrella_alias[$sid] : $sid;
+                                        }
+                                        $selected_umbrellaTitle_canon = array_values(array_unique($selected_umbrellaTitle_canon));
                                         ?>
                                     <div class="d-flex align-items-center" style="gap: 8px; flex: 0 0 auto;">
                                         <select class="form-control select2" multiple="multiple" data-skip-select2="true" id="umbrellaTitle" name="umbrellaTitle[]">
                                             <option value="">Select Umbrella Title</option>
                                             <?php foreach ($umbrella_rows as $row): ?>
-                                                <?php
-                                                $label = trim((string)$row->english_transliteration);
-                                                if ($label === '') { $label = trim((string)$row->original_title); }
-                                                $rid = (string)$row->id;
-                                                ?>
-                                                <option value="<?= htmlspecialchars($rid) ?>" <?= in_array($rid, array_map('strval', $selected_umbrellaTitle), true) ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                                                <option value="<?= htmlspecialchars($row->id) ?>" <?= in_array($row->id, $selected_umbrellaTitle_canon, true) ? 'selected' : '' ?>><?= htmlspecialchars($row->label) ?></option>
                                             <?php endforeach; ?>
                                         </select>
                                         <button type="button" class="btn btn-info btn-sm" id="editBtn">Edit</button>
@@ -917,6 +956,7 @@ include('inc/sidebar.php');
                                         </select>
                                         <button type="button" class="btn btn-sm btn-success ml-2" id="addSingerBtn" style="white-space: nowrap;">Add New</button>
                                         <button type="button" class="btn btn-sm btn-primary ml-1" id="editSingerBtn" style="white-space: nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger ml-1" id="deleteSingerBtn" style="white-space: nowrap;">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -969,6 +1009,7 @@ include('inc/sidebar.php');
                                         </select>
                                         <button type="button" class="btn btn-sm btn-success ml-2" id="addPoetBtn" style="white-space: nowrap;">Add New</button>
                                         <button type="button" class="btn btn-sm btn-primary ml-1" id="editPoetBtn" style="white-space: nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger ml-1" id="deletePoetBtn" style="white-space: nowrap;">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -1048,6 +1089,7 @@ include('inc/sidebar.php');
                                         </select>
                                         <button type="button" class="btn btn-sm btn-success ml-2" id="addAttributedPoetBtn" style="white-space: nowrap;">Add New</button>
                                         <button type="button" class="btn btn-sm btn-primary ml-1" id="editAttributedPoetBtn" style="white-space: nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger ml-1" id="deleteAttributedPoetBtn" style="white-space: nowrap;">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -1256,12 +1298,34 @@ include('inc/sidebar.php');
                                 gap: 8px;
                                 width: 100%;
                             }
+                            /* Keep the translator dropdown + its Add/Edit/Delete
+                               buttons packed together on the LEFT, instead of the
+                               select stretching and pushing the buttons to the
+                               far right edge of the full-width row. */
+                            .song-translation-stack .translation-select {
+                                justify-content: flex-start !important;
+                            }
+                            .song-translation-stack .translation-select > #translator,
                             .song-translation-stack .translation-select .select2-container {
+                                flex: 0 0 220px !important;
                                 width: 220px !important;
-                                max-width: 100%;
+                                max-width: 220px;
+                            }
+                            .song-translation-stack .translation-select > .btn {
+                                flex: 0 0 auto !important;
                             }
                             .song-translation-stack .select2-container .select2-selection--multiple .select2-selection__placeholder {
                                 color: #6c757d;
+                            }
+                            /* Stretch every direct child of the (align-items:flex-start)
+                               column so the editor spans the full available width,
+                               matching the Original / Transliteration fields. */
+                            .song-translation-stack .translation-main-group > * {
+                                width: 100%;
+                                align-self: stretch;
+                            }
+                            .song-translation-stack .translation-editor {
+                                width: 100%;
                             }
                             .song-translation-stack .translation-editor .cke {
                                 width: 100% !important;
@@ -1305,7 +1369,7 @@ include('inc/sidebar.php');
                                     }
                                 }
                                 ?>
-                                <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="translator[]" id="translator" style="flex: 1; min-width: 0;" data-placeholder="Select Translator" data-select2-search-placeholder="Select Translator">
+                                <select class="form-control select2" multiple="multiple" data-skip-select2="true" name="translator[]" id="translator" style="flex: 0 0 220px; width: 220px; min-width: 0;" data-placeholder="Select Translator" data-select2-search-placeholder="Select Translator">
                                     <?php foreach ($translator_rows as $p):
                                         $parts = [];
                                         if (!empty(trim($p->first_name))) {
@@ -1331,6 +1395,7 @@ include('inc/sidebar.php');
                                 </select>
                                         <button type="button" class="btn btn-sm btn-success ml-2" id="addTranslatorBtn" style="white-space: nowrap; flex-shrink: 0;">Add New</button>
                                         <button type="button" class="btn btn-sm btn-primary ml-1" id="editTranslatorBtn" style="white-space: nowrap; flex-shrink: 0;">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger ml-1" id="deleteTranslatorBtn" style="white-space: nowrap; flex-shrink: 0;">Delete</button>
                                     </div>
                                     <div class="translation-editor">
                                         <textarea id="songLyricsTranslated" name="songLyricsTranslated" class="form-control"><?= htmlspecialchars($songLyricsTranslation) ?></textarea>
@@ -1406,6 +1471,7 @@ include('inc/sidebar.php');
                                     </select>
                                     <button type="button" class="btn btn-sm btn-success" id="addGlossaryWordBtn" style="white-space:nowrap;">Add New</button>
                                     <button type="button" class="btn btn-sm btn-primary ml-1" id="editGlossaryWordBtn" style="white-space:nowrap;">Edit</button>
+                                    <button type="button" class="btn btn-sm btn-danger ml-1" id="deleteGlossaryWordBtn" style="white-space:nowrap;">Delete</button>
                                 </div>
 
                                 <!-- Add New Glossary Word Modal -->
@@ -1583,6 +1649,7 @@ include('inc/sidebar.php');
                                         </select>
                                         <button type="button" class="btn btn-sm btn-success" id="addNewKeywordBtn" style="white-space:nowrap;">Add New</button>
                                         <button type="button" class="btn btn-sm btn-primary ml-1" id="editKeywordBtn" style="white-space:nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger ml-1" id="deleteKeywordBtn" style="white-space:nowrap;">Delete</button>
                                     </div>
                                 <!-- Add New Keyword Modal -->
                                 <div class="modal fade" id="addNewKeywordModal" tabindex="-1" role="dialog" aria-labelledby="addNewKeywordModalLabel" aria-hidden="true">
@@ -1607,7 +1674,19 @@ include('inc/sidebar.php');
                                                     <label>Transliteration</label>
                                                     <input type="text" class="form-control" id="newKeywordTransliteration" placeholder="Enter Keyword Transliteration">
                                                 </div>
+                                                <div class="form-group">
+                                                    <label>Word Meaning</label>
+                                                    <textarea class="form-control" id="newKeywordMeaning" rows="3" placeholder="Enter word meaning"></textarea>
+                                                </div>
                                             </div>
+                                            <!-- Anti-conflict CSS so the page-level flex .form-group rule
+                                                 doesn't squash labels/inputs inside this modal. -->
+                                            <style>
+                                                #addNewKeywordModal .form-group { display:block !important; align-items:initial !important; }
+                                                #addNewKeywordModal .form-group > label { display:block !important; flex:none !important; max-width:none !important; width:auto !important; margin-bottom:6px !important; padding-right:0 !important; }
+                                                #addNewKeywordModal .form-group > *:not(label) { width:100% !important; flex:none !important; }
+                                                #addNewKeywordModal { z-index: 100050; }
+                                            </style>
                                             <div class="modal-footer">
                                                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                                                 <button type="button" class="btn btn-primary" id="saveNewKeywordBtn">Save</button>
@@ -1708,44 +1787,73 @@ include('inc/sidebar.php');
                                     addNewKeywordModal.querySelectorAll('[data-dismiss="modal"], .close, .btn-secondary').forEach(function(btn){
                                         btn.addEventListener('click', function(e){ e.preventDefault(); __hideKwModal(); });
                                     });
-                                    if (addNewKeywordBtn && addNewKeywordModal && saveNewKeywordBtn && addNewKeywordInput && relatedkeywordsSelect) {
+                                    // Helpers: read/clear the 4 modal fields (Original / Translation / Transliteration / Word Meaning)
+                                    function __kwReadModal() {
+                                        var orig     = (document.getElementById('newKeywordOriginal') || {}).value || '';
+                                        var trans    = (document.getElementById('newKeywordTranslation') || {}).value || '';
+                                        var translit = (document.getElementById('newKeywordTransliteration') || {}).value || '';
+                                        var meaning  = (document.getElementById('newKeywordMeaning') || {}).value || '';
+                                        return {
+                                            word_original:        orig.trim(),
+                                            word_translation:     trans.trim(),
+                                            word_transliteration: translit.trim(),
+                                            glossary_meaning:     meaning.trim()
+                                        };
+                                    }
+                                    function __kwClearModal() {
+                                        ['newKeywordOriginal','newKeywordTranslation','newKeywordTransliteration','newKeywordMeaning'].forEach(function (id) {
+                                            var el = document.getElementById(id); if (el) el.value = '';
+                                        });
+                                    }
+
+                                    if (addNewKeywordBtn && addNewKeywordModal && saveNewKeywordBtn && relatedkeywordsSelect) {
                                         addNewKeywordBtn.onclick = function() {
+                                            __kwClearModal();
                                             __showKwModal();
-                                            addNewKeywordInput.value = '';
-                                            setTimeout(function() { addNewKeywordInput.focus(); }, 300);
+                                            setTimeout(function() {
+                                                var f = document.getElementById('newKeywordTransliteration');
+                                                if (f) f.focus();
+                                            }, 300);
                                         };
                                         saveNewKeywordBtn.onclick = async function() {
-                                            var newKeyword = addNewKeywordInput.value.trim();
-                                            if (!newKeyword) {
-                                                alert('Please enter a keyword!');
+                                            var fields = __kwReadModal();
+                                            if (!fields.word_transliteration) {
+                                                alert('Transliteration is required!');
                                                 return;
                                             }
                                             saveNewKeywordBtn.disabled = true;
                                             try {
-                                                // AJAX call to add keyword
+                                                var body = new URLSearchParams();
+                                                Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
                                                 var res = await fetch('<?= base_url('SongController/ajax_create_keyword') ?>', {
                                                     method: 'POST',
                                                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                                    body: 'word_transliteration=' + encodeURIComponent(newKeyword)
+                                                    body: body.toString()
                                                 });
                                                 var data = await res.json();
                                                 if (data && data.success) {
-                                                    var option = document.createElement('option');
-                                                    option.value = data.id;
-                                                    option.text = data.word_transliteration || newKeyword;
-                                                    option.selected = true;
-                                                    relatedkeywordsSelect.add(option);
-                                                    if (window.jQuery && $('#relatedkeywords').length) {
-                                                        if ($('#relatedkeywords').data('bs.multiselect') && $.fn.multiselect) {
-                                                            $('#relatedkeywords').multiselect('rebuild');
-                                                        }
+                                                    // Add or update option in the dropdown.
+                                                    var existingOpt = Array.from(relatedkeywordsSelect.options).find(function (o) { return String(o.value) === String(data.id); });
+                                                    if (existingOpt) {
+                                                        existingOpt.text = data.word_transliteration || fields.word_transliteration;
+                                                        existingOpt.selected = true;
+                                                    } else {
+                                                        var option = document.createElement('option');
+                                                        option.value = data.id;
+                                                        option.text = data.word_transliteration || fields.word_transliteration;
+                                                        option.selected = true;
+                                                        relatedkeywordsSelect.add(option);
+                                                    }
+                                                    if (window.__adminRefreshSelect) {
+                                                        window.__adminRefreshSelect('#relatedkeywords', String(data.id));
+                                                    } else if (window.jQuery) {
                                                         $('#relatedkeywords').trigger('change');
                                                     }
                                                     __hideKwModal();
-                                                    addNewKeywordInput.value = '';
-                                                    if (window.Swal) Swal.fire({icon:'success',title:'Success',text:'Keyword added!',timer:1200,showConfirmButton:false});
+                                                    __kwClearModal();
+                                                    if (window.Swal) Swal.fire({icon:'success',title:'Success',text:'Keyword saved!',timer:1200,showConfirmButton:false});
                                                 } else {
-                                                    alert('Failed to add keyword!');
+                                                    alert('Failed: ' + (data && data.message ? data.message : 'Unknown error'));
                                                 }
                                             } catch (e) {
                                                 alert('Error: ' + e.message);
@@ -2730,35 +2838,15 @@ include('inc/sidebar.php');
                 }
                 this.disabled = false;
             };
-            // Delete umbrella title (AJAX)
-            var deleteBtnUmbrella = document.getElementById('deleteBtn');
-            if (deleteBtnUmbrella) deleteBtnUmbrella.onclick = async function() {
-                const select = document.getElementById('umbrellaTitle');
-                if (!select || !select.selectedOptions || !select.selectedOptions.length) {
-                    Swal.fire({icon:'warning',title:'Select a title to delete!'});
-                    return;
-                }
-                var delVal = select.selectedOptions[0].value;
-                if (!delVal) { Swal.fire({icon:'warning',title:'Select a title to delete!'}); return; }
-                if (!(await Swal.fire({title:'Delete this title?',text:delVal,icon:'question',showCancelButton:true})).isConfirmed) return;
-                try {
-                    const res = await fetch('<?= base_url('SongController/ajax_delete_umbrella_title') ?>', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: 'title=' + encodeURIComponent(delVal)
-                    });
-                    const data = await res.json();
-                    if (data && data.success) {
-                        var si = select.selectedIndex;
-                        if (si >= 0) select.remove(si);
-                        Swal.fire({icon:'success',title:'Deleted!'});
-                    } else {
-                        Swal.fire({icon:'error',title:'Failed to delete!'});
-                    }
-                } catch(e) {
-                    Swal.fire({icon:'error',title:'Error',text:e.message});
-                }
-            };
+            // Delete umbrella title — route through the admin-wide safe delete helper
+            // so it behaves identically to every other Delete button: confirm dialog,
+            // usage check on the server (refuses if a song still references this title),
+            // dropdown refresh on success. We bind via $(function) so the helper
+            // (defined in inc/footer.php) is available by the time we run.
+            $(function () {
+                if (!window.__bindAdminDelete) return;
+                __bindAdminDelete('deleteBtn', { selectId: '#umbrellaTitle', entity: 'title', label: 'Umbrella Title' });
+            });
         });
         // --- End Umbrella Title Modal Logic ---
 
@@ -3719,21 +3807,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         var $search = $('<input type="text" class="ms-search-input" placeholder="Search..." />');
                         $search.on('click', function(e) { e.stopPropagation(); });
                         $search.on('keydown', function(e) { e.stopPropagation(); });
-                        // First-name basis: match the start of the label OR the start of any
-                        // whitespace-separated word inside it. So "das" matches "Kabir Das"
-                        // and "kab" matches "Kabir Das", but "abir" does not match.
+                        // Strict alphabetical prefix: only show options whose label STARTS WITH
+                        // the query. "a" => only items beginning with A; "ma" => only "Ma...".
                         $search.on('input', function() {
                             var q = $(this).val().toLowerCase().trim();
                             $dropdown.find('li').not('.ms-helper-container').each(function() {
                                 var txt = $(this).text().toLowerCase().trim();
-                                var ok = q === '' || txt.indexOf(q) === 0;
-                                if (!ok && q) {
-                                    var words = txt.split(/\s+/);
-                                    for (var w = 0; w < words.length; w++) {
-                                        if (words[w].indexOf(q) === 0) { ok = true; break; }
-                                    }
-                                }
-                                $(this).toggle(ok);
+                                $(this).toggle(q === '' || txt.indexOf(q) === 0);
                             });
                         });
                         $helper.append($search);
@@ -4054,51 +4134,90 @@ document.addEventListener('DOMContentLoaded', function() {
 (function () {
   function bindEdit(btnId, opts) {
     var b = document.getElementById(btnId);
-    if (!b) return;
-    b.addEventListener('click', function () {
-      if (window.__adminEditOption) window.__adminEditOption(opts);
-      else alert('Edit helper not loaded');
+    if (!b) { console.warn('[bindEdit] button not found:', btnId); return; }
+    b.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Some page-specific Keyword modal code on this view manually sets display:block
+      // without adding the .show class (custom __showKwModal flow). When that state
+      // leaks in, Bootstrap's .modal('show') sees it as already-open and refuses to
+      // animate. Force a clean reset on the target modal before opening Edit.
+      if (opts && opts.modalId) {
+        var $m = window.jQuery ? window.jQuery(opts.modalId) : null;
+        if ($m && $m.length) {
+          try {
+            // Strip any stale inline styles / classes / backdrops left over from
+            // the Add-mode custom show logic.
+            $m.removeClass('show').css('display', '').attr('aria-hidden', 'true').removeAttr('aria-modal');
+            window.jQuery('body').removeClass('modal-open');
+            window.jQuery('.modal-backdrop, #kw-modal-backdrop, #gw-modal-backdrop').remove();
+            if (window.bootstrap && bootstrap.Modal) {
+              var inst = bootstrap.Modal.getInstance($m[0]);
+              if (inst) { try { inst.dispose(); } catch (e2) {} }
+            } else if ($m.data && $m.data('bs.modal')) {
+              try { $m.data('bs.modal', null); } catch (e2) {}
+            }
+          } catch (e3) {}
+        }
+      }
+      if (window.__adminEditOption) {
+        // Defer to next tick so the click event finishes propagating before
+        // Bootstrap's outside-click listener attaches to the freshly-shown modal.
+        setTimeout(function () { window.__adminEditOption(opts); }, 0);
+      } else {
+        alert('Edit helper not loaded yet. Please reload the page.');
+      }
     });
   }
   var BASE = '<?php echo base_url(); ?>';
   bindEdit('editSingerBtn', {
     selectId: '#singer', modalId: '#addSingerModal', addSaveBtnId: '#addSinger',
-    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Singer',
+    updateUrl:  BASE + 'song/ajax_update_person',
+    prefillUrl: BASE + 'song/ajax_get_person',     // fetches name + hyperlink from DB
+    editTitle: 'Edit Singer',
     extraPayload: { type_id: 1 },
     fields: [
       { inputId: '#addSingerName', postKey: 'name',      primary: true },
-      { inputId: '#addSingerLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+      { inputId: '#addSingerLink', postKey: 'hyperlink' }
     ]
   });
   bindEdit('editPoetBtn', {
     selectId: '#poet', modalId: '#addPoetModal', addSaveBtnId: '#addPoet',
-    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Poet',
+    updateUrl:  BASE + 'song/ajax_update_person',
+    prefillUrl: BASE + 'song/ajax_get_person',
+    editTitle: 'Edit Poet',
     extraPayload: { type_id: 2 },
     fields: [
       { inputId: '#addPoetName', postKey: 'name',      primary: true },
-      { inputId: '#addPoetLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+      { inputId: '#addPoetLink', postKey: 'hyperlink' }
     ]
   });
   bindEdit('editAttributedPoetBtn', {
     selectId: '#attributed_poet', modalId: '#addAttributedPoetModal', addSaveBtnId: '#addAttributedPoet',
-    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Attributed Poet',
+    updateUrl:  BASE + 'song/ajax_update_person',
+    prefillUrl: BASE + 'song/ajax_get_person',
+    editTitle: 'Edit Attributed Poet',
     extraPayload: { type_id: 2 },
     fields: [
       { inputId: '#addAttributedPoetName', postKey: 'name',      primary: true },
-      { inputId: '#addAttributedPoetLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+      { inputId: '#addAttributedPoetLink', postKey: 'hyperlink' }
     ]
   });
   bindEdit('editTranslatorBtn', {
     selectId: '#translator', modalId: '#addTranslatorModal', addSaveBtnId: '#addTranslator',
-    updateUrl: BASE + 'song/ajax_update_translator', editTitle: 'Edit Translator',
+    updateUrl:  BASE + 'song/ajax_update_translator',
+    prefillUrl: BASE + 'song/ajax_get_person',     // translator is a person row in the DB
+    editTitle: 'Edit Translator',
     fields: [
       { inputId: '#addTranslatorName', postKey: 'name',      primary: true },
-      { inputId: '#addTranslatorLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+      { inputId: '#addTranslatorLink', postKey: 'hyperlink' }
     ]
   });
   bindEdit('editGlossaryWordBtn', {
     selectId: '#songglossary', modalId: '#addGlossaryWordModal', addSaveBtnId: '#saveGlossaryWordBtn',
-    updateUrl: BASE + 'song/ajax_update_glossary_word', editTitle: 'Edit Glossary Word',
+    updateUrl:  BASE + 'song/ajax_update_glossary_word',
+    prefillUrl: BASE + 'song/ajax_get_glossary_word',  // brings back all 4 fields for the edit popup
+    editTitle: 'Edit Glossary Word',
     fields: [
       { inputId: '#newGlossaryOriginal',        postKey: 'word_original' },
       { inputId: '#newGlossaryTranslation',     postKey: 'word_translation' },
@@ -4108,10 +4227,30 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   bindEdit('editKeywordBtn', {
     selectId: '#relatedkeywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#saveNewKeywordBtn',
-    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
+    updateUrl:  BASE + 'song/ajax_update_keyword',
+    prefillUrl: BASE + 'song/ajax_get_keyword', // fetches all 4 fields from DB so the popup is pre-filled
+    editTitle:  'Edit Keyword',
     fields: [
-      { inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }
+      { inputId: '#newKeywordOriginal',        postKey: 'word_original' },
+      { inputId: '#newKeywordTranslation',     postKey: 'word_translation' },
+      { inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true },
+      { inputId: '#newKeywordMeaning',         postKey: 'glossary_meaning' }
     ]
+  });
+
+  // ----- Delete buttons (use the admin-wide __bindAdminDelete helper) -----
+  // The helper is defined in inc/footer.php which is included AFTER this script
+  // tag, so we have to wait until DOMContentLoaded to call it (otherwise
+  // window.__bindAdminDelete is still undefined). Backend (song/ajax_delete_entity)
+  // refuses to delete if the row is still referenced from other content.
+  $(function () {
+    if (!window.__bindAdminDelete) { console.warn('[admin-delete] helper not loaded'); return; }
+    __bindAdminDelete('deleteSingerBtn',         { selectId: '#singer',          entity: 'person', label: 'Singer' });
+    __bindAdminDelete('deletePoetBtn',           { selectId: '#poet',            entity: 'person', label: 'Poet' });
+    __bindAdminDelete('deleteAttributedPoetBtn', { selectId: '#attributed_poet', entity: 'person', label: 'Attributed Poet' });
+    __bindAdminDelete('deleteTranslatorBtn',     { selectId: '#translator',      entity: 'person', label: 'Translator' });
+    __bindAdminDelete('deleteGlossaryWordBtn',   { selectId: '#songglossary',    entity: 'word',   label: 'Glossary Word' });
+    __bindAdminDelete('deleteKeywordBtn',        { selectId: '#relatedkeywords', entity: 'word',   label: 'Keyword' });
   });
 })();
 </script>

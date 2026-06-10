@@ -94,7 +94,7 @@ $(document).ready(function() {
                 responsivePriority: 2,
                 render: function(data) {
                     return `
-                        <a href="<?= base_url('glossary/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
+                        ${__adminPreviewBtn(data)}<a href="<?= base_url('glossary/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
                         <button class="btn btn-sm btn-danger delete-glossary" data-id="${data}">Delete</button>
                     `;
                 }

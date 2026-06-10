@@ -117,9 +117,24 @@ $sectionMenusList = isset($section_menus) && is_array($section_menus) ? $section
                                     <?php foreach ($sectionMenusList as $m):
                                         $slug = htmlspecialchars($m->slug, ENT_QUOTES, 'UTF-8');
                                         $label = htmlspecialchars($m->label, ENT_QUOTES, 'UTF-8'); ?>
-                                    <button type="button" class="section-menu-btn" data-type="<?php echo $slug; ?>" data-id="<?php echo (int)$m->id; ?>">
+                                    <!-- Menu card is a <button> with edit/delete <span> icons inside;
+                                         click on those spans is intercepted in JS (stopPropagation) so
+                                         only the icon's own action runs, not the parent activateMenu(). -->
+                                    <button type="button" class="section-menu-btn" data-type="<?php echo $slug; ?>" data-id="<?php echo (int)$m->id; ?>" data-label="<?php echo $label; ?>" style="padding-right:48px;">
                                         <span class="menu-title"><?php echo $label; ?></span>
                                         <span class="menu-state">Not Saved</span>
+                                        <span class="menu-edit-btn"   role="button" tabindex="0"
+                                              data-id="<?php echo (int)$m->id; ?>" data-slug="<?php echo $slug; ?>" data-label="<?php echo $label; ?>"
+                                              title="Edit menu"
+                                              style="position:absolute; top:6px; right:28px; color:#1f6feb; cursor:pointer; font-size:13px; padding:2px 4px; opacity:.85; line-height:1;">
+                                            <i class="fa fa-edit"></i>
+                                        </span>
+                                        <span class="menu-delete-btn" role="button" tabindex="0"
+                                              data-id="<?php echo (int)$m->id; ?>" data-slug="<?php echo $slug; ?>"
+                                              title="Delete menu"
+                                              style="position:absolute; top:6px; right:8px; color:#dc3545; cursor:pointer; font-size:13px; padding:2px 4px; opacity:.85; line-height:1;">
+                                            <i class="fa fa-times"></i>
+                                        </span>
                                     </button>
                                     <?php endforeach; ?>
                                 </div>
@@ -138,6 +153,23 @@ $sectionMenusList = isset($section_menus) && is_array($section_menus) ? $section
                                 <div style="display:flex; gap:8px; justify-content:flex-end;">
                                     <button type="button" class="btn btn-secondary" id="sectionAddMenuCancel">Cancel</button>
                                     <button type="button" class="btn btn-primary" id="sectionAddMenuSave">Add</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Edit Menu Modal -->
+                        <div id="sectionEditMenuModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
+                            <div style="background:#fff; width:420px; max-width:92%; border-radius:8px; padding:18px; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+                                <h5 style="margin:0 0 12px;">Edit Menu</h5>
+                                <input type="hidden" id="sectionEditMenuId" value="">
+                                <input type="hidden" id="sectionEditMenuOldSlug" value="">
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label for="sectionEditMenuName">Menu Name</label>
+                                    <input type="text" id="sectionEditMenuName" class="form-control" maxlength="100">
+                                </div>
+                                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                    <button type="button" class="btn btn-secondary" id="sectionEditMenuCancel">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="sectionEditMenuSave">Update</button>
                                 </div>
                             </div>
                         </div>
@@ -202,7 +234,9 @@ $(document).ready(function() {
         foreach ($sectionMenusList as $m) { $labels[$m->slug] = $m->label; }
         echo json_encode((object)$labels);
     ?>;
-    const menusCreateUrl = <?php echo json_encode(base_url('about-section/' . $sectionSlug . '/menus/create')); ?>;
+    const menusCreateUrl     = <?php echo json_encode(base_url('about-section/' . $sectionSlug . '/menus/create')); ?>;
+    const menusUpdateBaseUrl = <?php echo json_encode(base_url('about-section/' . $sectionSlug . '/menus/update')); ?>;
+    const menusDeleteBaseUrl = <?php echo json_encode(base_url('about-section/' . $sectionSlug . '/menus/delete')); ?>;
     const initialEntry = <?php echo json_encode([
         'id' => $currentId, 'type' => $currentType, 'visual_content' => $currentVisualContent
     ]); ?>;
@@ -290,8 +324,110 @@ $(document).ready(function() {
         if (defaultType) activateMenu(defaultType);
     });
 
-    $('#sectionMenuSwitch').on('click', '.section-menu-btn', function(){
+    $('#sectionMenuSwitch').on('click', '.section-menu-btn', function(e){
+        // Edit/Delete icons live INSIDE this button; ignore clicks that originated on them.
+        if (e.target && e.target.closest && e.target.closest('.menu-edit-btn, .menu-delete-btn')) return;
         activateMenu(($(this).data('type') || '').toString());
+    });
+
+    // ----- Per-menu Delete -----
+    $('#sectionMenuSwitch').on('click', '.menu-delete-btn', function(e){
+        e.preventDefault(); e.stopPropagation();
+        const $btn  = $(this);
+        const id    = $btn.data('id');
+        const slug  = String($btn.data('slug') || '');
+        const $wrap = $btn.closest('.section-menu-btn');
+        const label = $wrap.find('.menu-title').text().trim();
+        Swal.fire({
+            title: 'Delete this menu?',
+            text: 'Menu "' + label + '" will be removed. This cannot be undone.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'Delete'
+        }).then(function(r){
+            if (!r.isConfirmed) return;
+            $.post(menusDeleteBaseUrl + '/' + id, {}, function(resp){
+                if (resp && resp.status) {
+                    // Drop it from the in-memory lists so activateMenu() doesn't try to re-render it.
+                    const idx = menuTypes.indexOf(slug);
+                    if (idx !== -1) menuTypes.splice(idx, 1);
+                    delete menuLabels[slug];
+                    delete menuEntries[slug];
+                    $wrap.remove();
+                    // If we just deleted the currently active menu, fall back to the first remaining one.
+                    if (($('#type').val() || '') === slug) {
+                        $('#type').val('');
+                        if (menuTypes.length) activateMenu(menuTypes[0]);
+                        else $('#selectedMenuInfo').show().text('Select a menu section to add/edit content.');
+                    }
+                    Swal.fire({icon:'success', title:'Deleted', timer:900, showConfirmButton:false});
+                } else {
+                    Swal.fire({icon:'error', title:'Error', text:(resp && resp.message) ? resp.message : 'Delete failed'});
+                }
+            }, 'json').fail(function(){
+                Swal.fire({icon:'error', title:'Network error', text:'Could not reach server'});
+            });
+        });
+    });
+
+    // ----- Per-menu Edit -----
+    const $editMenuModal = $('#sectionEditMenuModal');
+    const closeEditMenuModal = function(){ $editMenuModal.hide(); };
+    $('#sectionEditMenuCancel').on('click', closeEditMenuModal);
+    $editMenuModal.on('click', function(e){ if (e.target === this) closeEditMenuModal(); });
+
+    $('#sectionMenuSwitch').on('click', '.menu-edit-btn', function(e){
+        e.preventDefault(); e.stopPropagation();
+        const $btn   = $(this);
+        const id     = $btn.data('id');
+        const slug   = String($btn.data('slug') || '');
+        const label  = String($btn.data('label') || $btn.closest('.section-menu-btn').find('.menu-title').text().trim());
+        $('#sectionEditMenuId').val(id);
+        $('#sectionEditMenuOldSlug').val(slug);
+        $('#sectionEditMenuName').val(label);
+        $editMenuModal.css('display','flex');
+        setTimeout(function(){ $('#sectionEditMenuName').focus().select(); }, 50);
+    });
+
+    $('#sectionEditMenuSave').on('click', function(){
+        const id      = ($('#sectionEditMenuId').val() || '').trim();
+        const oldSlug = ($('#sectionEditMenuOldSlug').val() || '').trim();
+        const label   = ($('#sectionEditMenuName').val() || '').trim();
+        if (!id) return;
+        if (!label) { Swal.fire({icon:'warning', title:'Missing name', text:'Please enter a menu name'}); return; }
+        const $btn = $(this).prop('disabled', true).text('Updating...');
+        $.post(menusUpdateBaseUrl + '/' + id, { label: label }, function(resp){
+            if (resp && resp.status && resp.data) {
+                const d = resp.data;
+                const newSlug = String(d.slug || '').toLowerCase();
+                const newLabel = String(d.label || label);
+                // Re-key the in-memory menu maps from oldSlug -> newSlug.
+                const idx = menuTypes.indexOf(oldSlug);
+                if (idx !== -1) menuTypes[idx] = newSlug;
+                if (oldSlug !== newSlug) {
+                    menuLabels[newSlug] = newLabel;
+                    delete menuLabels[oldSlug];
+                    menuEntries[newSlug] = menuEntries[oldSlug] || null;
+                    delete menuEntries[oldSlug];
+                } else {
+                    menuLabels[newSlug] = newLabel;
+                }
+                // Refresh DOM attributes + visible text on the menu card.
+                const $wrap = $('.menu-edit-btn[data-id="'+ id +'"]').closest('.section-menu-btn');
+                $wrap.find('.section-menu-btn').attr('data-type', newSlug).attr('data-label', newLabel);
+                $wrap.find('.menu-edit-btn').attr('data-slug', newSlug).attr('data-label', newLabel);
+                $wrap.find('.menu-delete-btn').attr('data-slug', newSlug);
+                $wrap.find('.menu-title').text(newLabel);
+                // If we just renamed the active menu, point #type at the new slug.
+                if (($('#type').val() || '') === oldSlug) {
+                    $('#type').val(newSlug);
+                }
+                closeEditMenuModal();
+                Swal.fire({icon:'success', title:'Updated', timer:1000, showConfirmButton:false});
+            } else {
+                Swal.fire({icon:'error', title:'Error', text:(resp && resp.message) ? resp.message : 'Update failed'});
+            }
+        }, 'json').fail(function(){
+            Swal.fire({icon:'error', title:'Network error', text:'Could not reach server'});
+        }).always(function(){ $btn.prop('disabled', false).text('Update'); });
     });
 
     // Add New Menu modal
@@ -314,10 +450,30 @@ $(document).ready(function() {
                     menuTypes.push(slug);
                     menuLabels[slug] = label;
                     menuEntries[slug] = null;
+                    // Build the menu card to match the server-rendered structure
+                    // exactly (same data-* attrs, padding, and Edit/Delete icons),
+                    // so newly-added menus get the same Edit/Delete affordance
+                    // without requiring a page reload.
+                    const newId = resp.data.id || '';
                     const $btnEl = $('<button type="button" class="section-menu-btn"></button>')
-                        .attr('data-type', slug).attr('data-id', resp.data.id || '')
+                        .attr('data-type', slug)
+                        .attr('data-id', newId)
+                        .attr('data-label', label)
+                        .attr('style', 'padding-right:48px;')
                         .append($('<span class="menu-title"></span>').text(label))
-                        .append($('<span class="menu-state"></span>').text('Not Saved'));
+                        .append($('<span class="menu-state"></span>').text('Not Saved'))
+                        .append(
+                            $('<span class="menu-edit-btn" role="button" tabindex="0" title="Edit menu"></span>')
+                                .attr('data-id', newId).attr('data-slug', slug).attr('data-label', label)
+                                .attr('style', 'position:absolute; top:6px; right:28px; color:#1f6feb; cursor:pointer; font-size:13px; padding:2px 4px; opacity:.85; line-height:1;')
+                                .append('<i class="fa fa-edit"></i>')
+                        )
+                        .append(
+                            $('<span class="menu-delete-btn" role="button" tabindex="0" title="Delete menu"></span>')
+                                .attr('data-id', newId).attr('data-slug', slug)
+                                .attr('style', 'position:absolute; top:6px; right:8px; color:#dc3545; cursor:pointer; font-size:13px; padding:2px 4px; opacity:.85; line-height:1;')
+                                .append('<i class="fa fa-times"></i>')
+                        );
                     $('#sectionMenuSwitch').append($btnEl);
                 }
                 closeAddModal();

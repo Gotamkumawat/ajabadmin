@@ -52,11 +52,16 @@ class PersonController extends CI_Controller {
             'first_name_in_hindi' => $this->input->post('first_name_in_hindi'),
             'middle_name_in_hindi' => $this->input->post('middle_name_in_hindi'),
             'last_name_in_hindi' => $this->input->post('last_name_in_hindi'),
-            'primary_occupation' => is_array($this->input->post('primary_occupation')) ? implode(',', $this->input->post('primary_occupation')) : ($this->input->post('primary_occupation') ?? ''),
-            'occupation' => is_array($this->input->post('occupation')) ? implode(',', $this->input->post('occupation')) : ($this->input->post('occupation') ?? ''),
+            // The form posts the chosen Occupation under the name `occupation`
+            // (single select). We mirror that value into BOTH columns:
+            //   - person.primary_occupation  → canonical source for List + Edit views
+            //   - person.occupation          → legacy CSV column (kept in sync)
+            'primary_occupation' => is_array($this->input->post('occupation')) ? implode(',', $this->input->post('occupation')) : ($this->input->post('occupation') ?? ''),
+            'occupation'         => is_array($this->input->post('occupation')) ? implode(',', $this->input->post('occupation')) : ($this->input->post('occupation') ?? ''),
             'profile' => $this->input->post('profile'),
             'thumbnail_image_upload' => $thumbnail_image_upload,
-            'thumbnail_excerpt' => $this->input->post('thumbnail_excerpt'),
+            // 'thumbnail_excerpt' field removed from the UI; intentionally NOT written here
+            // so existing DB values are preserved on save/update.
             'thumbnail_url' => $this->input->post('thumbnail_url'),
             'about' => $this->input->post('about'),
             'keywords' => is_array($this->input->post('keywords')) ? implode(',', $this->input->post('keywords')) : ($this->input->post('keywords') ?? ''),
@@ -141,11 +146,15 @@ class PersonController extends CI_Controller {
             'first_name_in_hindi' => $this->input->post('first_name_in_hindi'),
             'middle_name_in_hindi' => $this->input->post('middle_name_in_hindi'),
             'last_name_in_hindi' => $this->input->post('last_name_in_hindi'),
-            'primary_occupation' => is_array($this->input->post('primary_occupation')) ? implode(',', $this->input->post('primary_occupation')) : ($this->input->post('primary_occupation') ?? ''),
-            'occupation' => is_array($this->input->post('occupation')) ? implode(',', $this->input->post('occupation')) : ($this->input->post('occupation') ?? ''),
+            // The form posts the chosen Occupation under the name `occupation`
+            // (single select). We mirror that value into BOTH columns:
+            //   - person.primary_occupation  → canonical source for List + Edit views
+            //   - person.occupation          → legacy CSV column (kept in sync)
+            'primary_occupation' => is_array($this->input->post('occupation')) ? implode(',', $this->input->post('occupation')) : ($this->input->post('occupation') ?? ''),
+            'occupation'         => is_array($this->input->post('occupation')) ? implode(',', $this->input->post('occupation')) : ($this->input->post('occupation') ?? ''),
             'profile' => $this->input->post('profile'),
             'thumbnail_image_upload' => $thumbnail_image_upload,
-            'thumbnail_excerpt' => $this->input->post('thumbnail_excerpt'),
+            // 'thumbnail_excerpt' field removed from the UI; preserve existing DB value.
             'thumbnail_url' => $thumbnail_url,
             'about' => $this->input->post('about'),
             'keywords' => is_array($this->input->post('keywords')) ? implode(',', $this->input->post('keywords')) : ($this->input->post('keywords') ?? ''),
@@ -282,28 +291,47 @@ class PersonController extends CI_Controller {
         foreach ($people as $p) {
             $personId = isset($p->id) ? (string)$p->id : '';
 
-            // Collect category names (from junction; fallback to legacy CSV)
+            // Collect category names (from junction; fallback to legacy CSV).
+            // Used ONLY for Profile Tags now; Occupation comes from person.primary_occupation below.
             $catIds = ($personId !== '' && isset($person_category_map[$personId])) ? $person_category_map[$personId] : [];
             if (empty($catIds) && !empty($p->occupation)) {
                 $catIds = array_filter(array_map('trim', explode(',', $p->occupation)));
             }
 
-            // Match form mapping (add-person.php):
-            //   underscore-prefixed (`_xxx`) → Occupation field
-            //   plain names                  → Profile Tags field
-            $occupationNames = [];
+            // Profile Tags = junction categories whose name doesn't start with `_`.
+            // (Legacy `_`-prefixed entries are skipped here; the Occupation column uses
+            //  a different source — see below.)
             $profileTags = [];
             foreach ($catIds as $cid) {
                 $catName = isset($occupation_map[$cid]) ? $occupation_map[$cid] : '';
                 if ($catName === '') continue;
-                if (strpos($catName, '_') === 0) {
-                    $occupationNames[] = ltrim($catName, '_');
-                } else {
+                if (strpos($catName, '_') !== 0) {
                     $profileTags[] = $catName;
                 }
             }
 
-            // Occupation column: show real category names (no `_` prefix), fallback "—"
+            // ============================================================
+            // Occupation column source: person.primary_occupation (single
+            // category.id stored on the person row). This replaces the older
+            // junction-based logic so the column shows the person's chosen
+            // primary occupation rather than every underscore-prefixed
+            // category they happen to be linked to.
+            // primary_occupation MAY be a single id, or (defensively) a
+            // comma-separated list — handle both.
+            // ============================================================
+            $occupationNames = [];
+            $rawPrimary = isset($p->primary_occupation) ? trim((string) $p->primary_occupation) : '';
+            if ($rawPrimary !== '') {
+                $primaryIds = array_filter(array_map('trim', explode(',', $rawPrimary)));
+                foreach ($primaryIds as $pid) {
+                    if (isset($occupation_map[$pid])) {
+                        $occupationNames[] = ltrim($occupation_map[$pid], '_');
+                    } elseif ($pid !== '') {
+                        // Not a numeric id — assume the value itself is a name.
+                        $occupationNames[] = ltrim($pid, '_');
+                    }
+                }
+            }
             $occupation_value = !empty($occupationNames) ? implode(', ', array_values(array_unique($occupationNames))) : '—';
 
             // Profile Tags fallback: legacy person.profile_tags CSV

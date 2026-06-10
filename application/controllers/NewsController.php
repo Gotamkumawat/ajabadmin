@@ -231,7 +231,8 @@ class NewsController extends CI_Controller {
                 'news_title' => trim((string) ($e->news_title ?? '')) !== '' ? $e->news_title : '—',
                 'sequence_order' => $sequence_display,
                 'display_in_popup' => $display_in_popup,
-                'action' => '<a href="' . base_url('NewsController/edit/' . $e->id) . '" class="btn btn-sm btn-primary">Edit</a>
+                'action' => '<button type="button" class="btn btn-sm btn-info admin-preview-btn" data-id="' . $e->id . '">Preview</button>
+                             <a href="' . base_url('NewsController/edit/' . $e->id) . '" class="btn btn-sm btn-primary">Edit</a>
                              <a href="' . base_url('NewsController/delete/' . $e->id) . '" class="btn btn-sm btn-danger">Delete</a>'
             ];
         }

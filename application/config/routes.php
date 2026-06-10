@@ -209,9 +209,11 @@ $route['kabir-project/menus/delete/(:num)'] = 'AddAboutController/delete_kabir_m
 $route['about-section/sections']                          = 'AboutSection/sections_list';
 $route['about-section/sections/create']                   = 'AboutSection/sections_create';
 $route['about-section/sections/delete/(:num)']            = 'AboutSection/sections_delete/$1';
+$route['about-section/sections/update/(:num)']            = 'AboutSection/sections_update/$1';
 $route['about-section/(:any)/menus']                      = 'AboutSection/menus_list/$1';
 $route['about-section/(:any)/menus/create']               = 'AboutSection/menus_create/$1';
 $route['about-section/(:any)/menus/delete/(:num)']        = 'AboutSection/menus_delete/$1/$2';
+$route['about-section/(:any)/menus/update/(:num)']        = 'AboutSection/menus_update/$1/$2';
 $route['about-section/(:any)/save']                       = 'AboutSection/save/$1';
 $route['about-section/(:any)/update/(:num)']              = 'AboutSection/update/$1/$2';
 $route['about-section/(:any)/edit/(:num)']                = 'AboutSection/index/$1/$2';
@@ -242,6 +244,17 @@ $route['song/update'] = 'SongController/update';
 $route['song/update/(:num)'] = 'SongController/update/$1';
 $route['song/save'] = 'SongController/save';
 $route['song/delete/(:num)'] = 'SongController/delete/$1';
+// Keyword AJAX endpoints (shared by Singer/Poet/Glossary add+edit popups across forms).
+$route['song/ajax_create_keyword']        = 'SongController/ajax_create_keyword';
+$route['song/ajax_update_keyword']        = 'SongController/ajax_update_keyword';
+$route['song/ajax_get_keyword']           = 'SongController/ajax_get_keyword';
+$route['song/ajax_get_person']            = 'SongController/ajax_get_person';
+$route['song/ajax_get_glossary_word']     = 'SongController/ajax_get_glossary_word';
+// Shared safe-delete used by Delete button next to Add/Edit on every select field.
+$route['song/ajax_delete_entity']         = 'SongController/ajax_delete_entity';
+$route['song/ajax_update_glossary_word']  = 'SongController/ajax_update_glossary_word';
+$route['song/ajax_update_person']         = 'SongController/ajax_update_person';
+$route['song/ajax_update_translator']     = 'SongController/ajax_update_translator';
 $route['person/ajax-create'] = 'SongController/ajax_create_person';
 
 $route['couplets-list'] = 'lists/couplets';

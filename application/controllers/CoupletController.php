@@ -424,7 +424,8 @@ class CoupletController extends CI_Controller {
                 'couplet_translation' => $row['couplet_translation'] ?? '',
                 'poet_id' => $poetNames,
                 'is_published' => $row['is_published'] ? 'Yes' : 'No',
-                'action' => '<a href="'.base_url('edit-couplet/'.$row['id']).'" class="btn btn-info btn-sm">Edit</a>
+                'action' => '<button type="button" class="btn btn-sm btn-info admin-preview-btn" data-id="'.$row['id'].'">Preview</button>
+                            <a href="'.base_url('edit-couplet/'.$row['id']).'" class="btn btn-primary btn-sm">Edit</a>
                             <a href="'.base_url('delete-couplet/'.$row['id']).'" class="btn btn-danger btn-sm">Delete</a>'
             );
         }

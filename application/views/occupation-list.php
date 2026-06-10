@@ -84,7 +84,7 @@ $(document).ready(function() {
                 orderable: false,
                 searchable: false,
                 render: function(data) {
-                    return '<a href="<?php echo base_url('occupation/edit/'); ?>' + data + '" class="btn btn-sm btn-primary mr-1">Edit</a>' +
+                    return __adminPreviewBtn(data) + '<a href="<?php echo base_url('occupation/edit/'); ?>' + data + '" class="btn btn-sm btn-primary mr-1">Edit</a>' +
                            '<button class="btn btn-sm btn-danger delete-occupation" data-id="' + data + '">Delete</button>';
                 }
             }

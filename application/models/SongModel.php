@@ -229,19 +229,58 @@ class SongModel extends CI_Model {
      * or use interview_* fallbacks. Safe no-op if `songs` is missing or row absent.
      */
     public function merge_legacy_year_location_for_song($songId, array $song) {
+        // Merge legacy-only fields from the `songs` table for the edit page.
+        //
+        // The canonical `song` table doesn't carry these columns:
+        //   singer, poet, year, location, thumbnailUrl, thumbnailexcerpt, publish
+        // They're saved into the legacy `songs` table (mirror) by
+        // sync_year_location_to_legacy_songs() during save. Without this merge
+        // the edit page reads them as blank because `song.<column>` doesn't exist.
         $songId = (int) $songId;
-        if ($songId <= 0) {
+        if ($songId <= 0 || !$this->db->table_exists('songs')) {
             return $song;
         }
-        $needYear = !isset($song['year']) || trim((string) $song['year']) === '';
-        $needLoc = !isset($song['location']) || trim((string) $song['location']) === '';
-        if (!$needYear && !$needLoc) {
+
+        // List of fields we want to mirror back from `songs` to the edit-view payload,
+        // and which DB column (or alternate column) they live in.
+        // Format: target_key => [primary_col, ...fallback_cols]
+        $legacyFields = [
+            'year'             => ['year', 'interview_year'],
+            'location'         => ['location', 'interview_place'],
+            'interview_audio'  => ['interview_audio'],
+            'singer'           => ['singer'],
+            'poet'             => ['poet'],
+            'thumbnailUrl'     => ['thumbnailUrl', 'thumbnail_url'],
+            'thumbnailexcerpt' => ['thumbnailexcerpt'],
+            'publish'          => ['publish'],
+        ];
+
+        // Figure out which fields actually need filling in (skip if already set on $song).
+        $missing = [];
+        foreach ($legacyFields as $key => $cols) {
+            if (!isset($song[$key]) || trim((string) $song[$key]) === '') {
+                $missing[$key] = $cols;
+            }
+        }
+        if (empty($missing)) {
             return $song;
         }
-        if (!$this->db->table_exists('songs')) {
+
+        // Build a SELECT list of every column we still need (intersected with what `songs` actually has).
+        $songsCols = $this->db->list_fields('songs');
+        $colsToFetch = [];
+        foreach ($missing as $cols) {
+            foreach ($cols as $c) {
+                if (in_array($c, $songsCols, true) && !in_array($c, $colsToFetch, true)) {
+                    $colsToFetch[] = $c;
+                }
+            }
+        }
+        if (empty($colsToFetch)) {
             return $song;
         }
-        $legacy = $this->db->select('year, location, interview_year, interview_place, interview_audio')
+
+        $legacy = $this->db->select(implode(',', $colsToFetch))
             ->from('songs')
             ->where('id', $songId)
             ->get()
@@ -249,26 +288,18 @@ class SongModel extends CI_Model {
         if (empty($legacy)) {
             return $song;
         }
-        $needAudio = !isset($song['interview_audio']) || trim((string) $song['interview_audio']) === '';
-        if ($needAudio && !empty($legacy['interview_audio'])) {
-            $song['interview_audio'] = trim((string) $legacy['interview_audio']);
-        }
-        if ($needYear) {
-            $y = isset($legacy['year']) ? trim((string) $legacy['year']) : '';
-            if ($y === '' && isset($legacy['interview_year'])) {
-                $y = trim((string) $legacy['interview_year']);
-            }
-            if ($y !== '') {
-                $song['year'] = $y;
-            }
-        }
-        if ($needLoc) {
-            $loc = isset($legacy['location']) ? trim((string) $legacy['location']) : '';
-            if ($loc === '' && isset($legacy['interview_place'])) {
-                $loc = trim((string) $legacy['interview_place']);
-            }
-            if ($loc !== '') {
-                $song['location'] = $loc;
+
+        // For each missing field, walk its candidate columns and use the first non-empty value.
+        foreach ($missing as $key => $cols) {
+            foreach ($cols as $c) {
+                if (!array_key_exists($c, $legacy)) {
+                    continue;
+                }
+                $v = trim((string) $legacy[$c]);
+                if ($v !== '') {
+                    $song[$key] = $v;
+                    break;
+                }
             }
         }
         return $song;
@@ -363,12 +394,15 @@ class SongModel extends CI_Model {
     public function insert_song($data) {
         $yearSnap = array_key_exists('year', $data) ? $data['year'] : null;
         $locationSnap = array_key_exists('location', $data) ? $data['location'] : null;
-        // Capture legacy-only fields before they get filtered out (saved to `songs` table for edit page reads)
+        // Capture legacy-only fields before they get filtered out by filter_to_song_table_columns().
+        // These columns don't exist on the canonical `song` table, so we mirror them into the
+        // legacy `songs` table — the edit page (merge_legacy_year_location_for_song) reads them back.
         $legacyExtra = [
             'singer'           => array_key_exists('singer', $data) ? $data['singer'] : null,
             'poet'             => array_key_exists('poet', $data) ? $data['poet'] : null,
             'thumbnailUrl'     => array_key_exists('thumbnailUrl', $data) ? $data['thumbnailUrl'] : null,
             'thumbnailexcerpt' => array_key_exists('thumbnailexcerpt', $data) ? $data['thumbnailexcerpt'] : null,
+            'publish'          => array_key_exists('publish', $data) ? $data['publish'] : null,
         ];
         $songText = $this->extract_song_text_payload($data);
         $titleOriginal = isset($data['songTitleOriginal']) ? $data['songTitleOriginal'] : null;
@@ -867,11 +901,13 @@ class SongModel extends CI_Model {
             public function update_song($id, $data) {
                 $yearSnap = array_key_exists('year', $data) ? $data['year'] : null;
                 $locationSnap = array_key_exists('location', $data) ? $data['location'] : null;
+                // Same legacy mirror as insert_song(); see comments there.
                 $legacyExtra = [
                     'singer'           => array_key_exists('singer', $data) ? $data['singer'] : null,
                     'poet'             => array_key_exists('poet', $data) ? $data['poet'] : null,
                     'thumbnailUrl'     => array_key_exists('thumbnailUrl', $data) ? $data['thumbnailUrl'] : null,
                     'thumbnailexcerpt' => array_key_exists('thumbnailexcerpt', $data) ? $data['thumbnailexcerpt'] : null,
+                    'publish'          => array_key_exists('publish', $data) ? $data['publish'] : null,
                 ];
                 $songText = $this->extract_song_text_payload($data);
                 $titleOriginal = isset($data['songTitleOriginal']) ? $data['songTitleOriginal'] : null;

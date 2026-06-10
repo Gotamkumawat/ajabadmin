@@ -395,6 +395,7 @@ class RadioController extends CI_Controller {
                 'singer_name' => trim((string) ($r->singer_name ?? '')) !== '' ? $r->singer_name : '—',
                 'playlist' => trim((string) ($r->playlists ?? '')) !== '' ? $r->playlists : '—',
                 'action' => '
+                    <button type="button" class="btn btn-sm btn-info admin-preview-btn" data-id="' . $r->id . '">Preview</button>
                     <a href="' . base_url('RadioController/add_radio/' . $r->id) . '" class="btn btn-sm btn-primary">Edit</a>
                     <a href="' . base_url('RadioController/delete/' . $r->id) . '" class="btn btn-sm btn-danger" onclick="return confirm(\'Are you sure?\')">Delete</a>
                 '

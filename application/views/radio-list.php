@@ -156,7 +156,7 @@ $(document).ready(function() {
                     searchable: false,
                     responsivePriority: 2,
                     render: function(data) {
-                        return '<a href="<?= base_url('add-playlist/') ?>' + data + '" class="btn btn-sm btn-primary">Edit</a> ' +
+                        return __adminPreviewBtn(data) + '<a href="<?= base_url('add-playlist/') ?>' + data + '" class="btn btn-sm btn-primary">Edit</a> ' +
                             '<button class="btn btn-sm btn-danger delete-playlist" data-id="' + data + '">Delete</button>';
                     }
                 }

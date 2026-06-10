@@ -53,7 +53,27 @@
  *
  * NOTE: If you change these, also change the error_reporting() code below
  */
-	define('ENVIRONMENT', 'development');
+	// ============================================================
+	// AUTO-DETECT ENVIRONMENT from the request host.
+	// - Local hosts (localhost, 127.0.0.1, ::1, *.local, *.test) => 'development'
+	// - Everything else (live server / shared hosting)           => 'production'
+	// CLI runs (e.g. cron, migrations) default to 'production' to be safe.
+	// ============================================================
+	if (!defined('ENVIRONMENT')) {
+		$_host = isset($_SERVER['HTTP_HOST']) ? strtolower($_SERVER['HTTP_HOST']) : '';
+		$_isLocal = ($_host === ''  // CLI / no HTTP host → treat as production
+			? false
+			: (
+				$_host === 'localhost' ||
+				strpos($_host, 'localhost:') === 0 ||
+				strpos($_host, '127.0.0.1') === 0 ||
+				strpos($_host, '[::1]') === 0 ||
+				preg_match('/\.(local|test|localhost)(:|$)/', $_host) === 1
+			)
+		);
+		define('ENVIRONMENT', $_isLocal ? 'development' : 'production');
+		unset($_host, $_isLocal);
+	}
 
 
 /*

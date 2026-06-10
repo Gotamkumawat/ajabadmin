@@ -96,7 +96,7 @@ $(document).ready(function() {
                 searchable: false,
                 render: function(data) {
                     return `
-                        <a href="<?= base_url('about-image/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
+                        ${__adminPreviewBtn(data)}<a href="<?= base_url('about-image/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
                         <button class="btn btn-sm btn-danger delete-about-image" data-id="${data}">Delete</button>
                     `;
                 }

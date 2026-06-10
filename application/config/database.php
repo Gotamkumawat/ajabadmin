@@ -73,12 +73,32 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $active_group = 'default';
 $query_builder = TRUE;
 
+// ============================================================
+// ENVIRONMENT-DRIVEN DB CONNECTION
+// ENVIRONMENT is defined in index.php and auto-detected from HTTP_HOST:
+//   - development => local XAMPP   (root / no password / ajab_live)
+//   - production  => live hosting  (ajab_ajab credentials)
+// ============================================================
+if (ENVIRONMENT === 'development') {
+    // Local (XAMPP) — adjust here if your local DB ever differs.
+    $_dbHost = 'localhost';
+    $_dbUser = 'root';
+    $_dbPass = '';
+    $_dbName = 'ajab_live';
+} else {
+    // Live server (https://ajab.designanddevelopment.in/admin/)
+    $_dbHost = 'localhost';
+    $_dbUser = 'ajab_ajab';
+    $_dbPass = 'JPyj-#yadp+c#moO';
+    $_dbName = 'ajab_ajab';
+}
+
 $db['default'] = array(
     'dsn'      => '',
-    'hostname' => 'localhost',
-    'username' => 'root',
-    'password' => '',
-    'database' => 'ajab_live',
+    'hostname' => $_dbHost,
+    'username' => $_dbUser,
+    'password' => $_dbPass,
+    'database' => $_dbName,
     'dbdriver' => 'mysqli',
     'dbprefix' => '',
     'pconnect' => FALSE,
@@ -89,12 +109,14 @@ $db['default'] = array(
     'dbcollat' => 'utf8_general_ci',
 );
 
+// Legacy secondary connection — kept for any code that still references it.
+// Uses the same host/user as the primary, but a different DB name where applicable.
 $db['ajab_old'] = array(
     'dsn'      => '',
-    'hostname' => 'localhost',
-    'username' => 'root',
-    'password' => '',
-    'database' => 'ajab_old',
+    'hostname' => $_dbHost,
+    'username' => $_dbUser,
+    'password' => $_dbPass,
+    'database' => (ENVIRONMENT === 'development') ? 'ajab_old' : $_dbName,
     'dbdriver' => 'mysqli',
     'dbprefix' => '',
     'pconnect' => FALSE,
@@ -104,4 +126,6 @@ $db['ajab_old'] = array(
     'char_set' => 'utf8',
     'dbcollat' => 'utf8_general_ci',
 );
+
+unset($_dbHost, $_dbUser, $_dbPass, $_dbName);
 

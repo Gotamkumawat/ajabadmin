@@ -305,6 +305,34 @@ class AboutSection extends CI_Controller {
         }
     }
 
+    /**
+     * Rename a section. Default sections (ajab-shahar, kabir-project) are
+     * locked to their original slug — only their label can change. Custom
+     * sections also get their slug regenerated so the URL stays in sync.
+     */
+    public function sections_update($id) {
+        header('Content-Type: application/json; charset=utf-8');
+        $id  = (int)$id;
+        $sec = $this->db->where('id', $id)->get('about_sections')->row();
+        if (!$sec) { echo json_encode(['status' => false, 'message' => 'Not found']); return; }
+        $label = trim((string)$this->input->post('label', true));
+        if ($label === '') { echo json_encode(['status' => false, 'message' => 'Label required']); return; }
+        $update = ['label' => $label];
+        $isDefault = in_array($sec->slug, ['ajab-shahar','kabir-project'], true);
+        if (!$isDefault) {
+            $newSlug = $this->_slugify($label);
+            if ($newSlug === '') { echo json_encode(['status' => false, 'message' => 'Invalid label']); return; }
+            if ($newSlug !== $sec->slug) {
+                $clash = $this->db->where('slug', $newSlug)->where('id !=', $id)->get('about_sections')->row();
+                if ($clash) { echo json_encode(['status' => false, 'message' => 'Another section already has that name']); return; }
+                $update['slug'] = $newSlug;
+            }
+        }
+        $this->db->where('id', $id)->update('about_sections', $update);
+        $row = $this->db->where('id', $id)->get('about_sections')->row_array();
+        echo json_encode(['status' => true, 'data' => $row]);
+    }
+
     public function sections_delete($id) {
         header('Content-Type: application/json; charset=utf-8');
         $id = (int)$id;
@@ -355,6 +383,32 @@ class AboutSection extends CI_Controller {
             $err = $this->db->error();
             echo json_encode(['status' => false, 'message' => !empty($err['message']) ? $err['message'] : 'Insert failed']);
         }
+    }
+
+    /**
+     * Rename a menu within a section. Regenerates slug so the activate-menu
+     * logic in about-section.php picks up the new value.
+     */
+    public function menus_update($slug, $id) {
+        header('Content-Type: application/json; charset=utf-8');
+        $section = $this->_section_by_slug($slug);
+        if (!$section) { echo json_encode(['status' => false, 'message' => 'Section not found']); return; }
+        $id    = (int)$id;
+        $row   = $this->db->where('id', $id)->where('section_id', (int)$section->id)->get('section_menus')->row();
+        if (!$row) { echo json_encode(['status' => false, 'message' => 'Menu not found']); return; }
+        $label = trim((string)$this->input->post('label', true));
+        if ($label === '') { echo json_encode(['status' => false, 'message' => 'Label required']); return; }
+        $menuSlug = strtolower(preg_replace('/\s+/', ' ', $label));
+        if ($menuSlug !== $row->slug) {
+            $clash = $this->db->where('section_id', (int)$section->id)
+                              ->where('slug', $menuSlug)
+                              ->where('id !=', $id)
+                              ->get('section_menus')->row();
+            if ($clash) { echo json_encode(['status' => false, 'message' => 'Another menu already has that name']); return; }
+        }
+        $this->db->where('id', $id)->update('section_menus', ['label' => $label, 'slug' => $menuSlug]);
+        $updated = $this->db->where('id', $id)->get('section_menus')->row_array();
+        echo json_encode(['status' => true, 'data' => $updated]);
     }
 
     public function menus_delete($slug, $id) {

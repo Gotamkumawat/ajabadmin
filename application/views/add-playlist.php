@@ -319,22 +319,10 @@ include('inc/sidebar.php');
                                 <div class="form-group row align-items-center mb-3">
                                     <label class="col-md-2 col-form-label">Select Track/Song to Add</label>
                                     <div class="col-md-4 d-flex align-items-end" style="gap:10px;">
-                                        <select class="form-control select2" id="track_select" multiple="multiple" data-skip-select2="true" data-single-pick="true" data-placeholder="Select a song...">
-                                            <?php if (isset($songs) && !empty($songs)): ?>
-                                                <?php foreach ($songs as $song): ?>
-                                                    <option value="<?php echo $song->id; ?>"
-                                                            data-name="<?php echo isset($song->songTitle) ? htmlspecialchars($song->songTitle) : ''; ?>"
-                                                            data-artist="<?php echo isset($song->singer) ? htmlspecialchars($song->singer) : ''; ?>">
-                                                        <?php
-                                                        $displayTitle = isset($song->songTitle) && !empty(trim($song->songTitle)) ? $song->songTitle : 'Song #' . $song->id;
-                                                        echo htmlspecialchars($displayTitle);
-                                                        ?>
-                                                        <?php if (isset($song->singer) && !empty($song->singer)): ?>
-                                                            - <?php echo $song->singer; ?>
-                                                        <?php endif; ?>
-                                                    </option>
-                                                <?php endforeach; ?>
-                                            <?php endif; ?>
+                                        <!-- Options are supplied to Select2 via its data: option in JS
+                                             (built from PHP $songs); only the empty placeholder is needed here. -->
+                                        <select class="form-control track-select2" id="track_select" data-placeholder="Select a song...">
+                                            <option value=""></option>
                                         </select>
                                         
                                         <button type="button" class="btn btn-primary" id="add_track_btn">
@@ -402,56 +390,76 @@ $(document).ready(function() {
         allowClear: true
     });
     
-    // Debug Select2 initialization
-    console.log("Select2 initialized");
-    console.log("Songs data available: ", <?php echo json_encode($songs); ?>);
-    
-    // Force-attach Bootstrap Multiselect on track_select (proven UI from add-radio / add-song)
-    function __initTrackMultiselect() {
-        if (!$.fn.multiselect) { setTimeout(__initTrackMultiselect, 100); return; }
-        var $sel = $('#track_select');
-        if (!$sel.length) return;
-        // Destroy any prior Select2 / Multiselect on this element
-        try { if ($sel.data('select2')) $sel.select2('destroy'); } catch (e) {}
-        $sel.siblings('.select2-container').remove();
-        try { if ($sel.data('bs.multiselect')) $sel.multiselect('destroy'); } catch (e) {}
-        if (window.__adminInitMultiSelect) {
-            window.__adminInitMultiSelect($sel);
-        } else {
-            // Fallback minimal init
-            $sel.multiselect({
-                nonSelectedText: 'Select Song',
-                buttonWidth: '100%',
-                enableFiltering: true,
-                enableCaseInsensitiveFiltering: true,
-                filterPlaceholder: 'Search...'
-            });
-        }
-    }
-    setTimeout(__initTrackMultiselect, 200);
-    setTimeout(__initTrackMultiselect, 800);
-
-    // Populate select with songs data after initialization (rebuild Bootstrap Multiselect)
-    setTimeout(function() {
-        if (typeof songs !== 'undefined' && songs.length > 0) {
-            var $sel = $('#track_select');
-            // Only repopulate if PHP didn't render any options
-            if ($sel.find('option').length === 0) {
-                songs.forEach(function(song) {
-                    var displayText = song.songTitle || 'Song #' + song.id;
-                    if (song.singer) {
-                        displayText += ' - ' + song.singer;
-                    }
-                    $sel.append(new Option(displayText, song.id));
-                });
-                if ($sel.data('bs.multiselect') && $.fn.multiselect) {
-                    $sel.multiselect('rebuild');
-                } else {
-                    __initTrackMultiselect();
-                }
+    // Track picker: a clean single-select Select2 (searchable, matches the
+    // rest of the admin's modern selects). Pick a song, then "Add Track".
+    //
+    // Songs are fed via Select2's `data:` option (built from PHP) instead of
+    // relying on the DOM <option>s — this avoids any ordering/version races
+    // with the admin-wide Select2 setup loaded in the footer.
+    var __trackSongs = <?php
+        $__opts = array();
+        if (isset($songs) && !empty($songs)) {
+            foreach ($songs as $s) {
+                $title  = (isset($s->songTitle) && trim((string)$s->songTitle) !== '') ? $s->songTitle : ('Song #' . $s->id);
+                $artist = isset($s->singer) ? trim((string)$s->singer) : '';
+                $label  = $artist !== '' ? ($title . ' - ' . $artist) : $title;
+                $__opts[] = array('id' => (string)$s->id, 'text' => $label, 'name' => $title, 'artist' => $artist);
             }
         }
-    }, 100);
+        echo json_encode($__opts);
+    ?>;
+
+    function __trackMatcher(params, data) {
+        if (!data) return null;
+        var q = (params && params.term ? String(params.term) : '').toLowerCase().trim();
+        if (q === '' || data.id === '' || data.id == null) return data;
+        return String(data.text || '').toLowerCase().indexOf(q) > -1 ? data : null;
+    }
+
+    function __buildTrackOptionsFromData($sel) {
+        // Fallback: if Select2 isn't available or data binding fails, at least
+        // put the songs into the native <select> as real <option>s.
+        if ($sel.find('option').length > 1) return; // already has options
+        var html = '<option value=""></option>';
+        for (var i = 0; i < __trackSongs.length; i++) {
+            var o = __trackSongs[i];
+            html += '<option value="' + o.id + '">' + $('<div>').text(o.text).html() + '</option>';
+        }
+        $sel.html(html);
+    }
+
+    function __initTrackSelect() {
+        var $sel = $('#track_select');
+        if (!$sel.length) return;
+
+        // Always make sure the native select has the songs (cache/safety net).
+        __buildTrackOptionsFromData($sel);
+
+        if (!$.fn.select2) { setTimeout(__initTrackSelect, 120); return; }
+
+        if ($sel.data('select2')) {
+            // Already a Select2 — only re-init if it somehow ended up empty.
+            var hasData = false;
+            try { hasData = ($sel.find('option').length > 1); } catch (e) {}
+            if (hasData) return;
+            try { $sel.select2('destroy'); } catch (e) {}
+        }
+        $sel.siblings('.select2-container').remove();
+        $sel.select2({
+            width: '100%',
+            placeholder: $sel.attr('data-placeholder') || 'Select a song...',
+            allowClear: true,
+            data: __trackSongs,
+            matcher: __trackMatcher
+        });
+    }
+
+    // Run on ready, after a short delay (after footer Select2 setup), and again
+    // on full window load — whichever races last still ends up with the songs.
+    __initTrackSelect();
+    setTimeout(__initTrackSelect, 400);
+    setTimeout(__initTrackSelect, 1200);
+    $(window).on('load', function () { setTimeout(__initTrackSelect, 50); });
 
     // Initialize CKEditor for description
     CKEDITOR.config.versionCheck = false;
@@ -479,25 +487,17 @@ $(document).ready(function() {
         }, $playlist_tracks)); ?>;
     <?php endif; ?>
 
-    // Single-pick behavior on multi-select: keep only most recent selection
-    $('#track_select').on('change', function () {
-        var vals = $(this).val();
-        if (Array.isArray(vals) && vals.length > 1) {
-            var keep = vals[vals.length - 1];
-            $(this).val([keep]);
-            if ($(this).data('bs.multiselect') && $.fn.multiselect) {
-                $(this).multiselect('refresh');
-            }
-        }
-    });
-
     $('#add_track_btn').on('click', function() {
         const select = $('#track_select');
         var vals = select.val();
         var trackId = Array.isArray(vals) ? (vals[0] || '') : (vals || '');
-        var selectedOption = trackId ? select.find('option[value="' + trackId + '"]') : $();
-        var trackName = selectedOption.data('name');
-        var trackArtist = selectedOption.data('artist') || '';
+        // Look up the chosen song from the data array used to build Select2.
+        var song = null;
+        for (var i = 0; i < __trackSongs.length; i++) {
+            if (String(__trackSongs[i].id) === String(trackId)) { song = __trackSongs[i]; break; }
+        }
+        var trackName = song ? song.name : (song ? song.text : '');
+        var trackArtist = song ? (song.artist || '') : '';
 
         if (!trackId) {
             Swal.fire({
@@ -522,13 +522,8 @@ $(document).ready(function() {
 
         tracksList.push({ id: trackId, name: trackName, artist: trackArtist });
         updateTracksList();
-        // Reset multi-select to empty
-        select.val([]);
-        if (select.data('bs.multiselect') && $.fn.multiselect) {
-            select.multiselect('refresh');
-        } else {
-            select.trigger('change');
-        }
+        // Reset the picker back to its placeholder for the next selection.
+        select.val(null).trigger('change');
     });
 
     function updateTracksList() {

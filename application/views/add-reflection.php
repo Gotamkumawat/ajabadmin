@@ -385,6 +385,7 @@ include('inc/sidebar.php');
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addSpeakerBtn">Add New</button>
                                 <button type="button" class="btn btn-primary btn-sm ml-1" id="editSpeakerBtn">Edit</button>
+                                <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteSpeakerBtn">Delete</button>
                             </div>
                         </div>
 
@@ -450,8 +451,11 @@ include('inc/sidebar.php');
 
 
                                 <!-- INTERVIEW FIELDS -->
+                                <!-- Always visible for every Format (Interview / Essay / Visual Story / Audio Story).
+                                     The old format-based show/hide was removed per UX request: all options are
+                                     available for all formats. -->
                                  <div style="padding-left:20px;">
-                                <div class="format-section interview-section mt-3" style="display:none;">
+                                <div class="format-section interview-section mt-3">
                                 <div class="row">
                                     <div class="col-12">
                                         <div class="form-group">
@@ -492,6 +496,17 @@ include('inc/sidebar.php');
                                 <div class="row">
                                     <div class="col-12">
                                         <div class="form-group">
+                                            <label>SoundCloud Link</label>
+                                            <input type="text" name="soundcloud_link" id="soundcloud_link" class="form-control"
+                                                   placeholder="Enter SoundCloud track URL"
+                                                   value="<?php echo isset($reflection->soundcloud_link) ? htmlspecialchars($reflection->soundcloud_link) : ''; ?>">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-12">
+                                        <div class="form-group">
                                             <label>Text Interview</label>
                                             <textarea name="interview_text" id="interview_text" class="form-control" rows="3" placeholder="Enter text interview"><?php echo isset($reflection->interview_text) ? $reflection->interview_text : ''; ?></textarea>
                                         </div>
@@ -509,7 +524,9 @@ include('inc/sidebar.php');
                                 </div>
 
                                 <!-- OTHER FORMAT FIELDS -->
-                                <div class="format-section other-section mt-3" style="display:none;">
+                                <!-- Always visible for every Format (see note above). The inner
+                                     "Select editor" → Text/Moduler content toggle is unchanged. -->
+                                <div class="format-section other-section mt-3">
                                 
                                 <div class="row">
                                     <div class="col-12">
@@ -649,6 +666,7 @@ include('inc/sidebar.php');
                                 </select>
                                 <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtn">Add New</button>
                                 <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtn">Edit</button>
+                                <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteKeywordBtn">Delete</button>
                             </div>
                             <!-- Add New Keyword Modal -->
                             <div class="modal" id="addNewKeywordModal">
@@ -670,7 +688,16 @@ include('inc/sidebar.php');
                                             <label>Transliteration</label>
                                             <input type="text" id="newKeywordTransliteration" class="form-control" placeholder="Enter Keyword Transliteration">
                                         </div>
+                                        <div class="form-group">
+                                            <label>Word Meaning</label>
+                                            <textarea id="newKeywordMeaning" class="form-control" rows="3" placeholder="Enter word meaning"></textarea>
+                                        </div>
                                     </div>
+                                    <style>
+                                        #addNewKeywordModal .form-group { display:block !important; align-items:initial !important; }
+                                        #addNewKeywordModal .form-group > label { display:block !important; flex:none !important; max-width:none !important; width:auto !important; margin-bottom:6px !important; padding-right:0 !important; }
+                                        #addNewKeywordModal .form-group > *:not(label) { width:100% !important; flex:none !important; }
+                                    </style>
                                     <div class="modal-footer">
                                         <button class="btn-secondary" id="cancelAddNewKeyword">Cancel</button>
                                         <button class="btn-success" id="addKeywordConfirm">Add</button>
@@ -940,41 +967,69 @@ include('inc/sidebar.php');
 function openModal(id) { document.getElementById(id).style.display = 'block'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-// Add New Keyword
-document.getElementById('addNewKeywordBtn').onclick = function() { openModal('addNewKeywordModal'); };
+// Add New Keyword (4 fields: Original, Translation, Transliteration, Word Meaning)
+function __reflKwRead() {
+    return {
+        word_original:        ((document.getElementById('newKeywordOriginal')        || {}).value || '').trim(),
+        word_translation:     ((document.getElementById('newKeywordTranslation')     || {}).value || '').trim(),
+        word_transliteration: ((document.getElementById('newKeywordTransliteration') || {}).value || '').trim(),
+        glossary_meaning:     ((document.getElementById('newKeywordMeaning')         || {}).value || '').trim()
+    };
+}
+function __reflKwClear() {
+    ['newKeywordOriginal','newKeywordTranslation','newKeywordTransliteration','newKeywordMeaning'].forEach(function (id) {
+        var el = document.getElementById(id); if (el) el.value = '';
+    });
+}
+document.getElementById('addNewKeywordBtn').onclick = function() { __reflKwClear(); openModal('addNewKeywordModal'); };
 document.getElementById('closeAddNewKeyword').onclick = function() { closeModal('addNewKeywordModal'); };
 document.getElementById('cancelAddNewKeyword').onclick = function() { closeModal('addNewKeywordModal'); };
 document.getElementById('addKeywordConfirm').onclick = async function() {
-    var val = document.getElementById('newKeywordTransliteration').value.trim();
-    if(val) {
-        var btn = document.getElementById('addKeywordConfirm');
-        btn.disabled = true;
-        try {
-            var res = await fetch('<?= base_url('SongController/ajax_create_keyword') ?>', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'word_transliteration=' + encodeURIComponent(val)
-            });
-            var data = await res.json();
-            if (data && data.status === 'success') {
-                var sel = document.getElementById('related_keywords');
+    var fields = __reflKwRead();
+    if (!fields.word_transliteration) {
+        alert('Transliteration is required!');
+        return;
+    }
+    var btn = document.getElementById('addKeywordConfirm');
+    btn.disabled = true;
+    try {
+        var body = new URLSearchParams();
+        Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+        var res = await fetch('<?= base_url('SongController/ajax_create_keyword') ?>', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        });
+        var data = await res.json();
+        if (data && (data.status === 'success' || data.success)) {
+            var sel = document.getElementById('related_keywords');
+            var newId = data.keyword_id || data.id;
+            var existingOpt = Array.from(sel.options).find(function (o) { return String(o.value) === String(newId); });
+            if (existingOpt) {
+                existingOpt.text = data.word_transliteration || fields.word_transliteration;
+                existingOpt.selected = true;
+            } else {
                 var option = document.createElement('option');
-                option.value = data.keyword_id || data.id;
-                option.text = data.word_transliteration || val;
+                option.value = newId;
+                option.text = data.word_transliteration || fields.word_transliteration;
                 option.selected = true;
                 sel.add(option);
-                if (window.jQuery && $('#related_keywords').length) $('#related_keywords').trigger('change');
-                closeModal('addNewKeywordModal');
-                document.getElementById('newKeywordTransliteration').value = '';
-                if (window.Swal) Swal.fire({icon:'success',title:'Success',text:data.message || 'Keyword added!',timer:1200,showConfirmButton:false});
-            } else {
-                alert((data && data.message) ? data.message : 'Failed to add keyword!');
             }
-        } catch (e) {
-            alert('Error: ' + e.message);
+            if (window.__adminRefreshSelect) {
+                window.__adminRefreshSelect('#related_keywords', String(newId));
+            } else if (window.jQuery && $('#related_keywords').length) {
+                $('#related_keywords').trigger('change');
+            }
+            closeModal('addNewKeywordModal');
+            __reflKwClear();
+            if (window.Swal) Swal.fire({icon:'success',title:'Success',text:data.message || 'Keyword saved!',timer:1200,showConfirmButton:false});
+        } else {
+            alert((data && data.message) ? data.message : 'Failed to save keyword!');
         }
-        btn.disabled = false;
+    } catch (e) {
+        alert('Error: ' + e.message);
     }
+    btn.disabled = false;
 };
 
 </script>
@@ -1227,22 +1282,10 @@ $(document).ready(function() {
        
 <script>
 $(document).ready(function(){
-  $('#format').change(function(){
-    var selected = $(this).val();
-
-    // Hide all sections first
-    $('.format-section').hide();
-
-    // Show only the selected format fields
-    if(selected === 'Interview'){
-      $('.interview-section').show();
-    } else if(selected === 'Essay' || selected === 'Visual Story' || selected === 'Audio Story'){
-      $('.other-section').show();
-    }
-  });
-
-  // Apply format section visibility on page load (edit mode)
-  $('#format').trigger('change');
+  // Format-based show/hide removed per UX request: every Format now shows ALL
+  // option sets (Video, Audio Upload, Text Interview, About, Select editor).
+  // Both .format-section blocks are always visible via markup (no inline display:none),
+  // so there is no longer any #format change handler toggling them.
 
   // Speaker Modal Handlers
   const addSpeakerModal = document.getElementById('addSpeakerModal');
@@ -1316,17 +1359,33 @@ $(document).ready(function(){
   var BASE = '<?php echo base_url(); ?>';
   bindEdit('editSpeakerBtn', {
     selectId: '#speaker_id', modalId: '#addSpeakerModal', addSaveBtnId: '#addSpeaker',
-    updateUrl: BASE + 'song/ajax_update_person', editTitle: 'Edit Speaker',
+    updateUrl:  BASE + 'song/ajax_update_person',
+    prefillUrl: BASE + 'song/ajax_get_person',
+    editTitle: 'Edit Speaker',
     extraPayload: { type_id: 1 },
     fields: [
       { inputId: '#addSpeakerName', postKey: 'name',      primary: true },
-      { inputId: '#addSpeakerLink', postKey: 'hyperlink', optionDataKey: 'hyperlink' }
+      { inputId: '#addSpeakerLink', postKey: 'hyperlink' }
     ]
   });
   bindEdit('editKeywordBtn', {
     selectId: '#related_keywords', modalId: '#addNewKeywordModal', addSaveBtnId: '#addKeywordConfirm',
-    updateUrl: BASE + 'song/ajax_update_keyword', editTitle: 'Edit Keyword',
-    fields: [{ inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true }]
+    updateUrl:  BASE + 'song/ajax_update_keyword',
+    prefillUrl: BASE + 'song/ajax_get_keyword',
+    editTitle:  'Edit Keyword',
+    fields: [
+      { inputId: '#newKeywordOriginal',        postKey: 'word_original' },
+      { inputId: '#newKeywordTranslation',     postKey: 'word_translation' },
+      { inputId: '#newKeywordTransliteration', postKey: 'word_transliteration', primary: true },
+      { inputId: '#newKeywordMeaning',         postKey: 'glossary_meaning' }
+    ]
+  });
+
+  // ----- Delete buttons (helper defined in footer.php which loads after; defer via $(function)). -----
+  $(function () {
+    if (!window.__bindAdminDelete) return;
+    __bindAdminDelete('deleteSpeakerBtn', { selectId: '#speaker_id',        entity: 'person', label: 'Speaker' });
+    __bindAdminDelete('deleteKeywordBtn', { selectId: '#related_keywords',  entity: 'word',   label: 'Keyword' });
   });
 })();
 </script>

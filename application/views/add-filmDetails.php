@@ -336,88 +336,318 @@ include('inc/sidebar.php');
                             }
                             ?>
                             <div class="form-group row align-items-start">
-                                <label class="col-md-2 col-form-label">Language + YouTube Link</label>
+                                <label class="col-md-2 col-form-label">Video Link</label>
                                 <div class="col-md-7">
                                     <div id="filmLanguageRows">
                                         <?php foreach ($filmLanguageRows as $idx => $langRow): ?>
+                                        <?php $selectedLanguage = trim((string)$langRow['language']); ?>
                                         <div class="film-language-row d-flex align-items-center mb-2" style="gap:8px;">
-                                            <select name="film_language[]" class="form-control" style="max-width:220px;">
-                                                <option value="">Select Language</option>
-                                                <?php
-                                                $selectedLanguage = trim((string)$langRow['language']);
-                                                foreach ($filmLanguageOptions as $optionLang) {
-                                                    $isSel = ($selectedLanguage === $optionLang) ? 'selected' : '';
-                                                    echo '<option value="' . htmlspecialchars($optionLang) . '" ' . $isSel . '>' . htmlspecialchars($optionLang) . '</option>';
-                                                }
-                                                if ($selectedLanguage !== '' && !in_array($selectedLanguage, $filmLanguageOptions, true)) {
-                                                    echo '<option value="' . htmlspecialchars($selectedLanguage) . '" selected>' . htmlspecialchars($selectedLanguage) . '</option>';
-                                                }
-                                                ?>
-                                            </select>
-                                            <input type="text" name="film_language_youtube_link[]" class="form-control film-language-link-input" placeholder="YouTube Link" value="<?php echo htmlspecialchars((string)$langRow['youtube_link']); ?>" <?php echo ($selectedLanguage === '') ? 'style="display:none;" disabled' : ''; ?>>
+                                            <!-- Language picker replaced with a free-text input box per UX request.
+                                                 Backend (FilmController) still reads film_language[] so the existing
+                                                 save/update logic continues to work unchanged. -->
+                                            <input type="text" name="film_language[]" class="form-control film-language-input" placeholder="Enter Language" value="<?php echo htmlspecialchars($selectedLanguage); ?>" style="max-width:220px;">
+                                            <input type="text" name="film_language_youtube_link[]" class="form-control film-language-link-input" placeholder="Video Link" value="<?php echo htmlspecialchars((string)$langRow['youtube_link']); ?>">
                                             <button type="button" class="btn btn-danger btn-sm film-language-remove" <?php echo ($idx === 0) ? 'style="display:none;"' : ''; ?>>Remove</button>
                                         </div>
                                         <?php endforeach; ?>
                                     </div>
                                     <div class="d-flex" style="gap:8px;">
-                                        <button type="button" class="btn btn-secondary btn-sm" id="addFilmLanguageRowBtn">Add Language</button>
+                                        <!-- "Add Language" (repeat-row) button removed per UX request.
+                                             "Add New Language" dialog kept — it manages the saved language
+                                             options list (category_type='film_language') for future use. -->
                                         <button type="button" class="btn btn-info btn-sm" id="addFilmLanguageOptionBtn">Add New Language</button>
                                     </div>
                                 </div>
                             </div>
 
+                            <?php
+                            // Build the list of distinct existing series titles from film_details.
+                            // Used to populate the Series Title dropdown so the user can pick
+                            // an existing series instead of re-typing it. "Add New" lets the
+                            // user enter a brand-new series with a description.
+                            $existing_series_titles = [];
+                            if ($this->db->table_exists('film_details')) {
+                                $rows = $this->db
+                                    ->select('series_title')
+                                    ->distinct()
+                                    ->from('film_details')
+                                    ->where('series_title IS NOT NULL', null, false)
+                                    ->where("TRIM(series_title) <> ''", null, false)
+                                    ->order_by('series_title', 'ASC')
+                                    ->get()->result();
+                                foreach ($rows as $r) {
+                                    $st = trim((string) $r->series_title);
+                                    if ($st !== '' && !in_array($st, $existing_series_titles, true)) {
+                                        $existing_series_titles[] = $st;
+                                    }
+                                }
+                            }
+                            $current_series_title = isset($film) ? trim((string) $film->series_title) : '';
+                            $current_series_desc  = isset($film) ? (string) $film->series_description : '';
+                            // If this film's existing series isn't in the list (was just deleted from others
+                            // or only used here), still show it so the dropdown reflects the saved value.
+                            if ($current_series_title !== '' && !in_array($current_series_title, $existing_series_titles, true)) {
+                                $existing_series_titles[] = $current_series_title;
+                                sort($existing_series_titles);
+                            }
+                            ?>
                             <div class="form-group row align-items-center">
-                                <label for="series_title" class="col-md-2 col-form-label">Series Title</label>
+                                <label for="series_title_select" class="col-md-2 col-form-label">Series Title</label>
                                 <div class="col-md-4">
-                                    <input type="text" class="form-control" id="series_title" name="series_title" value="<?php echo isset($film) ? htmlspecialchars($film->series_title) : ''; ?>" placeholder="Enter Series Title">
+                                    <div class="d-flex" style="gap:8px;">
+                                        <select class="form-control" id="series_title_select" style="max-width:280px;">
+                                            <option value="">Select Series Title</option>
+                                            <?php foreach ($existing_series_titles as $st): ?>
+                                                <option value="<?= htmlspecialchars($st) ?>" <?= ($st === $current_series_title) ? 'selected' : '' ?>><?= htmlspecialchars($st) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="button" class="btn btn-success btn-sm" id="addNewSeriesBtn" style="white-space:nowrap;">Add New</button>
+                                    </div>
+                                    <!-- Inline "new series" panel — hidden by default, opens when "Add New" is clicked
+                                         or when the user is editing a film whose series isn't in the dropdown anymore. -->
+                                    <div id="newSeriesPanel" class="mt-2" style="display:none;">
+                                        <input type="text" class="form-control mb-2" id="series_title_new" placeholder="Enter new series title" style="max-width:380px;">
+                                        <button type="button" class="btn btn-secondary btn-sm" id="cancelNewSeriesBtn">Cancel</button>
+                                    </div>
+                                    <!-- Hidden field that actually posts to the server.
+                                         It's kept in sync with either the select or the new-series input. -->
+                                    <input type="hidden" id="series_title" name="series_title" value="<?= htmlspecialchars($current_series_title) ?>">
                                 </div>
                             </div>
 
-                            <div class="form-group row align-items-center">
+                            <!-- Series Description: always visible. Backend reads series_description as before. -->
+                            <div class="form-group row align-items-start" id="series_description_row">
                                 <label for="series_description" class="col-md-2 col-form-label">Series Description</label>
                                 <div class="col-md-4">
-                                    <textarea class="form-control" id="series_description" name="series_description" placeholder="Enter Series Description"><?php echo isset($film) ? htmlspecialchars($film->series_description) : ''; ?></textarea>
+                                    <textarea class="form-control" id="series_description" name="series_description" placeholder="Enter Series Description"><?= htmlspecialchars($current_series_desc) ?></textarea>
                                 </div>
                             </div>
+
+                            <script>
+                            (function () {
+                                var sel       = document.getElementById('series_title_select');
+                                var hidden    = document.getElementById('series_title');
+                                var addBtn    = document.getElementById('addNewSeriesBtn');
+                                var cancelBtn = document.getElementById('cancelNewSeriesBtn');
+                                var panel     = document.getElementById('newSeriesPanel');
+                                var newInput  = document.getElementById('series_title_new');
+                                if (!sel || !hidden) return;
+
+                                function enterAddMode() {
+                                    sel.value = '';
+                                    sel.disabled = true;
+                                    panel.style.display = '';
+                                    if (newInput) { newInput.value = ''; newInput.focus(); }
+                                    hidden.value = '';
+                                }
+
+                                function exitAddMode() {
+                                    sel.disabled = false;
+                                    panel.style.display = 'none';
+                                    if (newInput) newInput.value = '';
+                                    hidden.value = sel.value || '';
+                                }
+
+                                // Sync hidden field when an existing series is picked.
+                                sel.addEventListener('change', function () {
+                                    hidden.value = sel.value || '';
+                                });
+
+                                if (addBtn) addBtn.addEventListener('click', enterAddMode);
+                                if (cancelBtn) cancelBtn.addEventListener('click', exitAddMode);
+
+                                // While typing the new series title, keep the hidden field in sync.
+                                if (newInput) {
+                                    newInput.addEventListener('input', function () {
+                                        hidden.value = (newInput.value || '').trim();
+                                    });
+                                }
+                            })();
+                            </script>
 
                             <div class="form-group row align-items-center">
                                 <label class="col-md-2 col-form-label">Director(s) <span style="color:red">*</span></label>
                                 <div class="col-md-4">
-                                    <select class="form-control select2" name="directors[]" id="directors" multiple required>
-                                        <option value="">Select Director</option>
-                                        <?php
-                                        $selected_directors = [];
-                                        if (isset($film) && isset($film->id) && $this->db->table_exists('film_director')) {
-                                            $director_map_rows = $this->db
-                                                ->select('director_id')
-                                                ->from('film_director')
-                                                ->where('film_id', (int)$film->id)
-                                                ->get()
-                                                ->result();
-                                            foreach ($director_map_rows as $dmr) {
-                                                if (isset($dmr->director_id) && $dmr->director_id !== '') {
-                                                    $selected_directors[] = (string)$dmr->director_id;
+                                    <div class="d-flex align-items-center" style="gap:8px;">
+                                        <select class="form-control select2" name="directors[]" id="directors" multiple required style="flex:1;" data-placeholder="Select Director">
+                                            <?php
+                                            $selected_directors = [];
+                                            if (isset($film) && isset($film->id) && $this->db->table_exists('film_director')) {
+                                                $director_map_rows = $this->db
+                                                    ->select('director_id')
+                                                    ->from('film_director')
+                                                    ->where('film_id', (int)$film->id)
+                                                    ->get()
+                                                    ->result();
+                                                foreach ($director_map_rows as $dmr) {
+                                                    if (isset($dmr->director_id) && $dmr->director_id !== '') {
+                                                        $selected_directors[] = (string)$dmr->director_id;
+                                                    }
                                                 }
                                             }
+                                            if (empty($selected_directors) && isset($film) && isset($film->directors)) {
+                                                $selected_directors = array_map('trim', explode(',', (string)$film->directors));
+                                            }
+                                            $director_rows = $this->db->query("
+                                                SELECT id, first_name, middle_name, last_name FROM person
+                                                ORDER BY LOWER(TRIM(CONCAT_WS(' ', IFNULL(first_name,''), IFNULL(middle_name,''), IFNULL(last_name,'')))) ASC, id ASC
+                                            ")->result();
+                                            foreach ($director_rows as $person) {
+                                                $parts = [];
+                                                if (!empty(trim($person->first_name))) { $parts[] = trim($person->first_name); }
+                                                if (!empty(trim($person->middle_name))) { $parts[] = trim($person->middle_name); }
+                                                if (!empty(trim($person->last_name))) { $parts[] = trim($person->last_name); }
+                                                $label = !empty($parts) ? implode(' ', $parts) : ('Person #' . $person->id);
+                                                $selected = in_array((string)$person->id, $selected_directors, true) ? 'selected' : '';
+                                                echo '<option value="'.htmlspecialchars($person->id).'" '.$selected.'>'.htmlspecialchars($label).'</option>';
+                                            }
+                                            ?>
+                                        </select>
+                                        <button type="button" class="btn btn-success btn-sm" id="addDirectorBtn" style="white-space:nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-primary btn-sm ml-1" id="editDirectorBtn" style="white-space:nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteDirectorBtn" style="white-space:nowrap;">Delete</button>
+                                    </div>
+
+                                    <!-- Add New Director popup — saves a new person via /person/ajax-create
+                                         (same endpoint used by Singer/Poet "Add New") and selects the new
+                                         option in the Director(s) dropdown in real time. -->
+                                    <div class="modal fade" id="addDirectorModal" tabindex="-1" role="dialog" aria-labelledby="addDirectorModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+                                        <div class="modal-dialog" role="document">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title" id="addDirectorModalLabel">Add New Director</h5>
+                                                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <div class="form-group" style="display:block;">
+                                                        <label>Name <span style="color:red">*</span></label>
+                                                        <input type="text" class="form-control" id="addDirectorName" placeholder="Enter director's full name">
+                                                    </div>
+                                                    <div class="form-group" style="display:block;">
+                                                        <label>Hyperlink (optional)</label>
+                                                        <input type="url" class="form-control" id="addDirectorLink" placeholder="https://example.com">
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                                                    <button type="button" class="btn btn-primary" id="saveNewDirectorBtn">Save</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <style>
+                                        /* Override the page's flex .form-group so labels/inputs stack normally
+                                           inside this modal (same pattern used elsewhere in the admin). */
+                                        #addDirectorModal .form-group { display:block !important; align-items:initial !important; }
+                                        #addDirectorModal .form-group > label { display:block !important; flex:none !important; max-width:none !important; width:auto !important; margin-bottom:6px !important; padding-right:0 !important; }
+                                        #addDirectorModal .form-group > *:not(label) { width:100% !important; flex:none !important; }
+                                        #addDirectorModal { z-index: 100050; }
+                                    </style>
+                                    <script>
+                                    (function () {
+                                        function showModal(modal) {
+                                            try {
+                                                if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('show'); return; }
+                                                if (window.bootstrap && bootstrap.Modal) { bootstrap.Modal.getOrCreateInstance(modal).show(); return; }
+                                            } catch (e) {}
+                                            modal.classList.add('show'); modal.style.display = 'block';
+                                            document.body.classList.add('modal-open');
                                         }
-                                        if (empty($selected_directors) && isset($film) && isset($film->directors)) {
-                                            $selected_directors = array_map('trim', explode(',', (string)$film->directors));
+                                        function hideModal(modal) {
+                                            try {
+                                                if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('hide'); return; }
+                                                if (window.bootstrap && bootstrap.Modal) {
+                                                    var inst = bootstrap.Modal.getInstance(modal); if (inst) { inst.hide(); return; }
+                                                }
+                                            } catch (e) {}
+                                            modal.classList.remove('show'); modal.style.display = 'none';
+                                            document.body.classList.remove('modal-open');
                                         }
-                                        $director_rows = $this->db->query("
-                                            SELECT id, first_name, middle_name, last_name FROM person
-                                            ORDER BY LOWER(TRIM(CONCAT_WS(' ', IFNULL(first_name,''), IFNULL(middle_name,''), IFNULL(last_name,'')))) ASC, id ASC
-                                        ")->result();
-                                        foreach ($director_rows as $person) {
-                                            $parts = [];
-                                            if (!empty(trim($person->first_name))) { $parts[] = trim($person->first_name); }
-                                            if (!empty(trim($person->middle_name))) { $parts[] = trim($person->middle_name); }
-                                            if (!empty(trim($person->last_name))) { $parts[] = trim($person->last_name); }
-                                            $label = !empty($parts) ? implode(' ', $parts) : ('Person #' . $person->id);
-                                            $selected = in_array((string)$person->id, $selected_directors, true) ? 'selected' : '';
-                                            echo '<option value="'.htmlspecialchars($person->id).'" '.$selected.'>'.htmlspecialchars($label).'</option>';
+                                        function init() {
+                                            var btn     = document.getElementById('addDirectorBtn');
+                                            var modal   = document.getElementById('addDirectorModal');
+                                            var saveBtn = document.getElementById('saveNewDirectorBtn');
+                                            var sel     = document.getElementById('directors');
+                                            if (!btn || !modal || !saveBtn || !sel) { setTimeout(init, 200); return; }
+                                            modal.querySelectorAll('[data-dismiss="modal"], .close, .btn-secondary').forEach(function (b) {
+                                                b.addEventListener('click', function (e) { e.preventDefault(); hideModal(modal); });
+                                            });
+                                            btn.onclick = function (e) {
+                                                e.preventDefault(); e.stopPropagation();
+                                                document.getElementById('addDirectorName').value = '';
+                                                document.getElementById('addDirectorLink').value = '';
+                                                setTimeout(function () {
+                                                    showModal(modal);
+                                                    setTimeout(function () { var f = document.getElementById('addDirectorName'); if (f) f.focus(); }, 200);
+                                                }, 0);
+                                            };
+                                            saveBtn.onclick = async function () {
+                                                var name = (document.getElementById('addDirectorName').value || '').trim();
+                                                var link = (document.getElementById('addDirectorLink').value || '').trim();
+                                                if (!name) { alert('Please enter the director\'s name'); return; }
+                                                saveBtn.disabled = true;
+                                                try {
+                                                    var res = await fetch('<?= base_url('person/ajax-create') ?>', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                                        body: 'name=' + encodeURIComponent(name) + '&hyperlink=' + encodeURIComponent(link)
+                                                    });
+                                                    var data = await res.json();
+                                                    if (data && data.success && data.id) {
+                                                        // Add the new <option>, mark it selected, refresh select2.
+                                                        var opt = document.createElement('option');
+                                                        opt.value = String(data.id);
+                                                        opt.text  = data.fullName || name;
+                                                        opt.selected = true;
+                                                        sel.add(opt);
+                                                        if (window.__adminRefreshSelect) {
+                                                            window.__adminRefreshSelect('#directors', String(data.id));
+                                                        } else if (window.jQuery) {
+                                                            $('#directors').trigger('change');
+                                                        }
+                                                        hideModal(modal);
+                                                        if (window.Swal) Swal.fire({ icon:'success', title:'Director added', timer:1200, showConfirmButton:false });
+                                                    } else {
+                                                        alert('Failed: ' + (data && data.message ? data.message : 'Unknown error'));
+                                                    }
+                                                } catch (e) {
+                                                    alert('Error: ' + e.message);
+                                                } finally {
+                                                    saveBtn.disabled = false;
+                                                }
+                                            };
+
+                                            // Edit: reuse the "Add New Director" modal via the admin-wide helper.
+                                            // Reads the director currently selected in #directors, prefills the
+                                            // modal from the DB, and swaps Save for an Update button. Same pattern
+                                            // as Poet/Translator edit on the song & couplet pages.
+                                            var editBtn = document.getElementById('editDirectorBtn');
+                                            if (editBtn) {
+                                                editBtn.addEventListener('click', function () {
+                                                    if (!window.__adminEditOption) { alert('Edit helper not loaded yet. Please try again in a moment.'); return; }
+                                                    var BASE = '<?= base_url() ?>';
+                                                    window.__adminEditOption({
+                                                        selectId:     '#directors',
+                                                        modalId:      '#addDirectorModal',
+                                                        addSaveBtnId: '#saveNewDirectorBtn',
+                                                        updateUrl:    BASE + 'song/ajax_update_person',
+                                                        prefillUrl:   BASE + 'song/ajax_get_person',
+                                                        editTitle:    'Edit Director',
+                                                        fields: [
+                                                            { inputId: '#addDirectorName', postKey: 'name', primary: true },
+                                                            { inputId: '#addDirectorLink', postKey: 'hyperlink' }
+                                                        ]
+                                                    });
+                                                });
+                                            }
                                         }
-                                        ?>
-                                    </select>
+                                        if (document.readyState === 'loading') {
+                                            document.addEventListener('DOMContentLoaded', init);
+                                        } else {
+                                            init();
+                                        }
+                                    })();
+                                    </script>
                                 </div>
                             </div>
 
@@ -529,7 +759,9 @@ include('inc/sidebar.php');
                                                 <option value="<?php echo htmlspecialchars((string)$keyword->id); ?>" <?php echo in_array((string)$keyword->id, $selected_film_keywords, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <button type="button" class="btn btn-secondary btn-sm ml-2" id="addKeywordBtn"><i class="fas fa-plus"></i> Add New</button>
+                                        <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtn">Add New</button>
+                                        <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtn">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteKeywordBtn">Delete</button>
                                     </div>
                                 </div>
                                 <!-- Songs -->
@@ -783,7 +1015,9 @@ include('inc/sidebar.php');
                                                 <option value="<?php echo htmlspecialchars((string)$keyword->id); ?>" <?php echo in_array((string)$keyword->id, $selected_episode_keywords, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <button type="button" class="btn btn-secondary btn-sm ml-2" id="addKeywordBtnEp"><i class="fas fa-plus"></i> Add New</button>
+                                        <button type="button" class="btn btn-success btn-sm ml-2" id="addNewKeywordBtnEp">Add New</button>
+                                        <button type="button" class="btn btn-primary btn-sm ml-1" id="editKeywordBtnEp">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-sm ml-1" id="deleteKeywordBtnEp">Delete</button>
                                     </div>
                                 </div>
                                 <!-- Songs -->
@@ -982,14 +1216,15 @@ $(document).ready(function() {
     }
 
     // Film tab
-    addNewHandler('#addKeywordBtn', '#related_keywords', '/FilmController/ajax_add_keyword', 'Keyword', 'word_transliteration', 'id');
+    // (Keyword Add/Edit moved to its own 4-field modal at the bottom of this file
+    //  — uses the same SongController/ajax_create_keyword + ajax_get_keyword +
+    //  ajax_update_keyword endpoints as add-song / add-couplet / add-reflection.)
     addNewHandler('#addSongBtn', '#related_songs', '/FilmController/ajax_add_song', 'Song', 'umbrellaTitle', 'id');
     addNewHandler('#addPoemBtn', '#related_poems', '/FilmController/ajax_add_poem', 'Poem', 'original_title', 'id');
     addNewHandler('#addReflectionBtn', '#related_reflections', '/FilmController/ajax_add_reflection', 'Reflection', 'title', 'id');
     addNewHandler('#addPersonBtn', '#related_people', '/FilmController/ajax_add_person', 'Person', 'full_name', 'id');
 
-    // Episode tab
-    addNewHandler('#addKeywordBtnEp', '#related_keywords_ep', '/FilmController/ajax_add_keyword', 'Keyword', 'word_transliteration', 'id');
+    // Episode tab — same notice as above for keyword.
     addNewHandler('#addSongBtnEp', '#related_songs_ep', '/FilmController/ajax_add_song', 'Song', 'umbrellaTitle', 'id');
     addNewHandler('#addPoemBtnEp', '#related_poems_ep', '/FilmController/ajax_add_poem', 'Poem', 'original_title', 'id');
 
@@ -1024,31 +1259,8 @@ $(document).ready(function() {
 
     // Film language + youtube dynamic rows
     var filmLanguageRows = document.getElementById('filmLanguageRows');
-    var addFilmLanguageRowBtn = document.getElementById('addFilmLanguageRowBtn');
     var addFilmLanguageOptionBtn = document.getElementById('addFilmLanguageOptionBtn');
-    function escapeHtml(str) {
-        return String(str || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-    function buildLanguageOptionsHtml(selectedValue) {
-        var html = '<option value="">Select Language</option>';
-        var opts = Array.isArray(window.filmLanguageOptions) ? window.filmLanguageOptions : [];
-        opts.forEach(function(opt) {
-            var val = String(opt || '').trim();
-            if (!val) return;
-            var selected = (String(selectedValue || '').trim() === val) ? ' selected' : '';
-            html += '<option value="' + escapeHtml(val) + '"' + selected + '>' + escapeHtml(val) + '</option>';
-        });
-        var selectedTrim = String(selectedValue || '').trim();
-        if (selectedTrim && opts.indexOf(selectedTrim) === -1) {
-            html += '<option value="' + escapeHtml(selectedTrim) + '" selected>' + escapeHtml(selectedTrim) + '</option>';
-        }
-        return html;
-    }
+
     function bindFilmLanguageRemoveButtons() {
         if (!filmLanguageRows) return;
         var removeButtons = filmLanguageRows.querySelectorAll('.film-language-remove');
@@ -1062,106 +1274,28 @@ $(document).ready(function() {
             };
         });
     }
-    function bindFilmLanguageSelectBehavior() {
-        if (!filmLanguageRows) return;
-        var rows = filmLanguageRows.querySelectorAll('.film-language-row');
-        rows.forEach(function(row) {
-            var select = row.querySelector('select[name="film_language[]"]');
-            var linkInput = row.querySelector('.film-language-link-input');
-            if (!select || !linkInput) return;
-            var toggleLinkInput = function() {
-                if ((select.value || '').trim() !== '') {
-                    linkInput.style.display = '';
-                    linkInput.disabled = false;
-                } else {
-                    linkInput.value = '';
-                    linkInput.style.display = 'none';
-                    linkInput.disabled = true;
-                }
-            };
-            select.onchange = toggleLinkInput;
-            toggleLinkInput();
-        });
-    }
-    if (filmLanguageRows && addFilmLanguageRowBtn) {
-        addFilmLanguageRowBtn.addEventListener('click', function() {
-            var row = document.createElement('div');
-            row.className = 'film-language-row d-flex align-items-center mb-2';
-            row.style.gap = '8px';
-            row.innerHTML = '<select name="film_language[]" class="form-control" style="max-width:220px;">' +
-                buildLanguageOptionsHtml('') +
-                '</select>' +
-                '<input type="text" name="film_language_youtube_link[]" class="form-control film-language-link-input" placeholder="YouTube Link" style="display:none;" disabled>' +
-                '<button type="button" class="btn btn-danger btn-sm film-language-remove">Remove</button>';
-            filmLanguageRows.appendChild(row);
-            bindFilmLanguageRemoveButtons();
-            bindFilmLanguageSelectBehavior();
-        });
+
+    if (filmLanguageRows) {
+        // "Add New Language" — simply appends a fresh Language + YouTube link
+        // input row to the list. No popup; users can add as many language /
+        // YouTube link pairs as they need, then save the form normally.
         if (addFilmLanguageOptionBtn) {
             addFilmLanguageOptionBtn.addEventListener('click', function() {
-                Swal.fire({
-                    title: 'Add New Language',
-                    input: 'text',
-                    inputLabel: 'Language Name',
-                    inputPlaceholder: 'Enter language name',
-                    showCancelButton: true,
-                    confirmButtonText: 'Add',
-                    cancelButtonText: 'Cancel',
-                    preConfirm: function(value) {
-                        var v = (value || '').trim();
-                        if (!v) {
-                            Swal.showValidationMessage('Please enter language name');
-                        }
-                        return v;
-                    }
-                }).then(function(result) {
-                    if (!result.isConfirmed || !result.value) return;
-                    var languageName = String(result.value).trim();
-                    fetch(createFilmLanguageUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                        body: 'language_name=' + encodeURIComponent(languageName)
-                    })
-                    .then(function(res) { return res.json(); })
-                    .then(function(response) {
-                        if (!response || response.status !== 'success') {
-                            Swal.fire({ icon: 'error', title: 'Error', text: (response && response.message) ? response.message : 'Failed to add language' });
-                            return;
-                        }
-                        var finalName = (response.language_name || languageName || '').trim();
-                        if (!finalName) return;
-                        if (!Array.isArray(window.filmLanguageOptions)) {
-                            window.filmLanguageOptions = [];
-                        }
-                        if (window.filmLanguageOptions.indexOf(finalName) === -1) {
-                            window.filmLanguageOptions.push(finalName);
-                        }
-                        var selects = filmLanguageRows.querySelectorAll('select[name="film_language[]"]');
-                        selects.forEach(function(sel) {
-                            if (!Array.from(sel.options).some(function(o){ return o.value === finalName; })) {
-                                var opt = document.createElement('option');
-                                opt.value = finalName;
-                                opt.text = finalName;
-                                sel.appendChild(opt);
-                            }
-                        });
-                        var lastSelect = selects.length ? selects[selects.length - 1] : null;
-                        if (lastSelect) {
-                            lastSelect.value = finalName;
-                            if (typeof lastSelect.onchange === 'function') {
-                                lastSelect.onchange();
-                            }
-                        }
-                        Swal.fire({ icon: 'success', title: 'Success', text: response.message || 'Language added successfully' });
-                    })
-                    .catch(function() {
-                        Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to add language' });
-                    });
-                });
+                var row = document.createElement('div');
+                row.className = 'film-language-row d-flex align-items-center mb-2';
+                row.style.gap = '8px';
+                row.innerHTML =
+                    '<input type="text" name="film_language[]" class="form-control film-language-input" placeholder="Enter Language" style="max-width:220px;">' +
+                    '<input type="text" name="film_language_youtube_link[]" class="form-control film-language-link-input" placeholder="Video Link">' +
+                    '<button type="button" class="btn btn-danger btn-sm film-language-remove">Remove</button>';
+                filmLanguageRows.appendChild(row);
+                bindFilmLanguageRemoveButtons();
+                // Focus the new Language input so the user can start typing immediately.
+                var newInput = row.querySelector('input[name="film_language[]"]');
+                if (newInput) newInput.focus();
             });
         }
         bindFilmLanguageRemoveButtons();
-        bindFilmLanguageSelectBehavior();
     }
 
     function switchTab(tabId) {
@@ -1258,6 +1392,249 @@ $(document).ready(function() {
         }
     });
 });
+</script>
+
+<!-- ============================================================
+     KEYWORD ADD/EDIT POPUP — shared by both Film and Film Episode tabs.
+     Uses the same 4 fields + endpoints as add-song / add-couplet /
+     add-reflection (SongController::ajax_create_keyword / ajax_get_keyword /
+     ajax_update_keyword), so the experience is consistent across the admin.
+     ============================================================ -->
+<div class="modal fade" id="addNewKeywordModal" tabindex="-1" role="dialog" aria-labelledby="addNewKeywordModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addNewKeywordModalLabel">Add New Keyword</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <!-- Fields/labels mirror the standalone "Add Keyword" page (add-keywords.php)
+                     Keywords section so the inline popup matches it: Original, Translation,
+                     Transliteration (required *), Word Meaning. -->
+                <div class="form-group">
+                    <label>Original</label>
+                    <input type="text" class="form-control" id="newKeywordOriginal" placeholder="Enter Word Original">
+                </div>
+                <div class="form-group">
+                    <label>Translation</label>
+                    <input type="text" class="form-control" id="newKeywordTranslation" placeholder="Enter Word Translation">
+                </div>
+                <div class="form-group">
+                    <label>Transliteration <span style="color:red">*</span></label>
+                    <input type="text" class="form-control" id="newKeywordTransliteration" placeholder="Enter Word Transliteration" required>
+                </div>
+                <div class="form-group">
+                    <label>Word Meaning</label>
+                    <textarea class="form-control" id="newKeywordMeaning" rows="3" placeholder="Enter Word Meaning"></textarea>
+                </div>
+            </div>
+            <style>
+                #addNewKeywordModal .form-group { display:block !important; align-items:initial !important; }
+                #addNewKeywordModal .form-group > label { display:block !important; flex:none !important; max-width:none !important; width:auto !important; margin-bottom:6px !important; padding-right:0 !important; }
+                #addNewKeywordModal .form-group > *:not(label) { width:100% !important; flex:none !important; }
+                #addNewKeywordModal { z-index: 100050; }
+            </style>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveNewKeywordBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var BASE = '<?php echo base_url(); ?>';
+
+    function kwReadModal() {
+        return {
+            word_original:        ((document.getElementById('newKeywordOriginal')        || {}).value || '').trim(),
+            word_translation:     ((document.getElementById('newKeywordTranslation')     || {}).value || '').trim(),
+            word_transliteration: ((document.getElementById('newKeywordTransliteration') || {}).value || '').trim(),
+            glossary_meaning:     ((document.getElementById('newKeywordMeaning')         || {}).value || '').trim()
+        };
+    }
+    function kwClearModal() {
+        ['newKeywordOriginal','newKeywordTranslation','newKeywordTransliteration','newKeywordMeaning'].forEach(function (id) {
+            var el = document.getElementById(id); if (el) el.value = '';
+        });
+    }
+    function showKwModal() {
+        var $m = $('#addNewKeywordModal');
+        // Force-clean stale state from any half-open attempt.
+        $('.modal-backdrop').remove();
+        $m.css('display','block').removeAttr('aria-hidden').attr('aria-modal','true').attr('role','dialog');
+        void $m[0].offsetWidth;
+        $m.addClass('show');
+        $('body').addClass('modal-open');
+        $('body').append('<div class="modal-backdrop fade show __kw_backdrop"></div>');
+        // Reset title + Save button (in case we were in Edit mode previously).
+        $m.find('.modal-title').text('Add New Keyword');
+        $m.find('.__kw_update_btn').remove();
+        $('#saveNewKeywordBtn').show();
+        setTimeout(function(){ var f = document.getElementById('newKeywordTransliteration'); if (f) f.focus(); }, 150);
+    }
+    function hideKwModal() {
+        var $m = $('#addNewKeywordModal');
+        $m.removeClass('show').css('display','none').attr('aria-hidden','true').removeAttr('aria-modal');
+        $('.__kw_backdrop, .modal-backdrop').remove();
+        if (!$('.modal.show').length) $('body').removeClass('modal-open');
+        // Reset title + button state for next open.
+        $m.find('.modal-title').text('Add New Keyword');
+        $m.find('.__kw_update_btn').remove();
+        $('#saveNewKeywordBtn').show();
+    }
+    // Wire close buttons (Cancel + ×).
+    $('#addNewKeywordModal').on('click', '[data-dismiss="modal"], .close', function (e) {
+        e.preventDefault(); hideKwModal();
+    });
+
+    /**
+     * targetSelectId — which <select> (with `[name="related_keywords[]"]`) the new
+     * keyword should be appended to and auto-selected in.
+     */
+    function bindAddKeyword(btnId, targetSelectId) {
+        var btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            kwClearModal();
+            showKwModal();
+        });
+    }
+
+    // Single Save handler — works whichever Add New button opened the modal.
+    // We look at the currently-active tab to decide which select to update.
+    $(document).on('click', '#saveNewKeywordBtn', async function () {
+        var fields = kwReadModal();
+        if (!fields.word_transliteration) { alert('Transliteration is required!'); return; }
+        var $btn = $(this).prop('disabled', true);
+        try {
+            var body = new URLSearchParams();
+            Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+            var res = await fetch(BASE + 'SongController/ajax_create_keyword', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
+            });
+            var data = await res.json();
+            if (data && data.success) {
+                // Add the option to BOTH film and episode select if they exist
+                // (saves the user adding the same keyword twice across tabs).
+                ['#related_keywords', '#related_keywords_ep'].forEach(function (sel) {
+                    var $sel = $(sel);
+                    if (!$sel.length) return;
+                    var found = $sel.find('option[value="' + String(data.id).replace(/(["\\])/g,'\\$1') + '"]');
+                    if (found.length) {
+                        found.text(data.word_transliteration || fields.word_transliteration);
+                    } else {
+                        $sel.append(new Option(data.word_transliteration || fields.word_transliteration, data.id));
+                    }
+                });
+                // Auto-select in the currently-visible tab's select only.
+                var activeSel = $('#filmTab.tab-content.active').length || $('#filmTab').is(':visible') ? '#related_keywords' : '#related_keywords_ep';
+                // Fallback: pick whichever tab is more obviously visible.
+                if (!$(activeSel).is(':visible')) {
+                    activeSel = $('#related_keywords').is(':visible') ? '#related_keywords' : '#related_keywords_ep';
+                }
+                if (window.__adminRefreshSelect) window.__adminRefreshSelect(activeSel, String(data.id));
+                else $(activeSel).trigger('change');
+                hideKwModal();
+                if (window.Swal) Swal.fire({icon:'success', title:'Keyword saved!', timer:1200, showConfirmButton:false});
+            } else {
+                alert('Failed: ' + (data && data.message ? data.message : 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            $btn.prop('disabled', false);
+        }
+    });
+
+    /**
+     * bindEditKeyword: when Edit clicked, fetch full word row from DB and open
+     * the same modal pre-filled, swapping the Save button for Update.
+     */
+    function bindEditKeyword(btnId, targetSelectId) {
+        var btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            var $sel = $(targetSelectId);
+            var vals = $sel.val() || [];
+            if (!Array.isArray(vals)) vals = [vals];
+            vals = vals.filter(function (v) { return v; });
+            if (vals.length !== 1) {
+                if (window.Swal) Swal.fire({icon:'info', title:'Pick one', text:'Please select exactly one keyword to edit.'});
+                else alert('Please select exactly one keyword to edit.');
+                return;
+            }
+            var id = String(vals[0]);
+            kwClearModal();
+            showKwModal();
+            // Title + button swap for edit mode.
+            $('#addNewKeywordModal .modal-title').text('Edit Keyword');
+            $('#saveNewKeywordBtn').hide();
+            var $updateBtn = $('<button type="button" class="btn btn-primary __kw_update_btn">Update</button>');
+            $('#addNewKeywordModal .modal-footer').append($updateBtn);
+
+            // Prefill from DB.
+            $.post(BASE + 'song/ajax_get_keyword', { id: id }, function (resp) {
+                if (!resp || (resp.success !== true && resp.status !== 'success')) return;
+                $('#newKeywordOriginal').val(resp.word_original || '');
+                $('#newKeywordTranslation').val(resp.word_translation || '');
+                $('#newKeywordTransliteration').val(resp.word_transliteration || '');
+                $('#newKeywordMeaning').val(resp.glossary_meaning || '');
+            }, 'json');
+
+            $updateBtn.on('click', async function () {
+                var fields = kwReadModal();
+                if (!fields.word_transliteration) { alert('Transliteration is required!'); return; }
+                $updateBtn.prop('disabled', true).text('Updating...');
+                try {
+                    var body = new URLSearchParams();
+                    body.append('id', id);
+                    Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+                    var res = await fetch(BASE + 'song/ajax_update_keyword', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: body.toString()
+                    });
+                    var data = await res.json();
+                    if (data && (data.success === true || data.status === 'success')) {
+                        // Refresh option label in BOTH selects (same id shared).
+                        ['#related_keywords', '#related_keywords_ep'].forEach(function (sel) {
+                            var $opt = $(sel).find('option[value="' + id.replace(/(["\\])/g,'\\$1') + '"]');
+                            if ($opt.length) $opt.text(data.word_transliteration || fields.word_transliteration);
+                        });
+                        if (window.__adminRefreshSelect) window.__adminRefreshSelect(targetSelectId, id);
+                        hideKwModal();
+                        if (window.Swal) Swal.fire({icon:'success', title:'Updated', timer:1100, showConfirmButton:false});
+                    } else {
+                        alert('Failed: ' + (data && data.message ? data.message : 'Update failed'));
+                    }
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                } finally {
+                    $updateBtn.prop('disabled', false).text('Update');
+                }
+            });
+        });
+    }
+
+    bindAddKeyword('addNewKeywordBtn',   '#related_keywords');
+    bindAddKeyword('addNewKeywordBtnEp', '#related_keywords_ep');
+    bindEditKeyword('editKeywordBtn',    '#related_keywords');
+    bindEditKeyword('editKeywordBtnEp',  '#related_keywords_ep');
+
+    // ----- Delete buttons (helper in footer.php loads after; defer via $(function)). -----
+    $(function () {
+        if (!window.__bindAdminDelete) return;
+        __bindAdminDelete('deleteDirectorBtn',  { selectId: '#directors',            entity: 'person', label: 'Director' });
+        __bindAdminDelete('deleteKeywordBtn',   { selectId: '#related_keywords',     entity: 'word',   label: 'Keyword' });
+        __bindAdminDelete('deleteKeywordBtnEp', { selectId: '#related_keywords_ep',  entity: 'word',   label: 'Keyword' });
+    });
+})();
 </script>
 
 <?php include('inc/footer.php'); ?>

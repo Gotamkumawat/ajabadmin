@@ -20,6 +20,8 @@
   <link rel="stylesheet" href="<?php echo base_url('plugins/jqvmap/jqvmap.min.css'); ?>">
   <!-- Theme style -->
   <link rel="stylesheet" href="<?php echo base_url('dist/css/adminlte.min.css'); ?>">
+  <!-- Admin editor marks (couplet / refrain) — also injected into CKEditor iframe -->
+  <link rel="stylesheet" href="<?php echo base_url('assets/css/admin-editor.css'); ?>">
   <!-- overlayScrollbars -->
   <link rel="stylesheet" href="<?php echo base_url('plugins/overlayScrollbars/css/OverlayScrollbars.min.css'); ?>">
   <!-- Daterange picker -->
@@ -147,19 +149,36 @@
     .multiselect-container li > a > label.checkbox {
       display: block !important;
       width: 100% !important;
-      padding: 5px 32px 5px 8px !important;
+      padding: 6px 32px 6px 10px !important;
       color: #444 !important;
-      white-space: normal !important;
-      word-wrap: break-word !important;
-      overflow-wrap: break-word !important;
-      word-break: break-word !important;
+      /* Keep each option on a single line; truncate with ellipsis if too long
+         (the full text is still readable on hover via the title attribute and
+         the dropdown auto-expands its width — see .multiselect-container below). */
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
       border: 1px solid transparent;
       position: relative;
       margin: 0 !important;
       cursor: pointer;
       font-weight: normal;
-      line-height: 1.4;
+      line-height: 1.45;
       box-sizing: border-box !important;
+    }
+    /* Dropdown panel sizing.
+       - min-width = at least as wide as the trigger button (200px wrapper).
+       - width auto-fits its content up to max-width so options aren't cramped.
+       - max-width capped so the panel never spreads across the screen.
+       The button itself stays at its fixed 200px width via .btn-group below. */
+    .multiselect-container.dropdown-menu {
+      width: auto !important;
+      min-width: 280px !important;
+      max-width: 520px !important;
+      box-sizing: border-box;
+    }
+    /* Anchor the dropdown to the button so it doesn't escape the column. */
+    .btn-group > .multiselect-container.dropdown-menu {
+      left: 0 !important;
     }
     .multiselect-container li > a > label.checkbox > input[type=checkbox] {
       position: absolute; left: -9999px; margin: 0;
@@ -485,6 +504,7 @@
       margin-left: 0 !important;
     }
   </style>
+
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
 <div class="wrapper">
@@ -508,11 +528,51 @@
     <!-- Right navbar links -->
     <ul class="navbar-nav ml-auto">
 
-    <li class="nav-item">
-        <a class="nav-link" data-widget="fullscreen" href="#" role="button">
+      <li class="nav-item">
+        <a class="nav-link" data-widget="fullscreen" href="#" role="button" title="Fullscreen">
           <i class="fas fa-expand-arrows-alt"></i>
         </a>
       </li>
+
+      <?php
+        // Resolve a friendly display name for the logged-in admin (set by Login controller).
+        $__authUser  = $this->session->userdata('username');
+        $__loggedIn  = (bool) $this->session->userdata('logged_in');
+        $__authLabel = $__authUser ? $__authUser : 'Admin';
+      ?>
+      <?php if ($__loggedIn): ?>
+      <li class="nav-item dropdown user-menu">
+        <a href="#" class="nav-link dropdown-toggle d-flex align-items-center" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false" style="gap:8px;">
+          <span class="header-user-avatar" aria-hidden="true">
+            <?= htmlspecialchars(strtoupper(substr($__authLabel, 0, 1))) ?>
+          </span>
+          <span class="d-none d-sm-inline" style="font-weight:500; color:#333;"><?= htmlspecialchars($__authLabel) ?></span>
+          <i class="fas fa-caret-down" style="color:#666;"></i>
+        </a>
+        <div class="dropdown-menu dropdown-menu-right header-user-dropdown" style="min-width:220px; padding:0;">
+          <div style="padding:14px 16px; border-bottom:1px solid #eee;">
+            <div style="font-weight:600; color:#222; line-height:1.2;"><?= htmlspecialchars($__authLabel) ?></div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">Signed in</div>
+          </div>
+          <a href="<?= base_url('logout') ?>" class="dropdown-item header-logout-link" style="padding:12px 16px; display:flex; align-items:center; gap:10px; color:#dc3545; font-weight:500;">
+            <i class="fas fa-sign-out-alt"></i> Logout
+          </a>
+        </div>
+      </li>
+      <?php endif; ?>
     </ul>
   </nav>
+
+  <style>
+    /* Header user dropdown — small, modern */
+    .header-user-avatar {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:32px; height:32px; border-radius:50%;
+      background:linear-gradient(135deg, #6366f1, #ec4899);
+      color:#fff; font-weight:700; font-size:13px;
+      box-shadow:0 2px 6px rgba(99,102,241,.35);
+    }
+    .header-user-dropdown { border:1px solid #e6e6e6; box-shadow:0 8px 24px rgba(0,0,0,.12); border-radius:8px; overflow:hidden; }
+    .header-logout-link:hover { background:#fdecee; color:#b02a37 !important; }
+  </style>
   <!-- /.navbar -->

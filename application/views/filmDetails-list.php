@@ -92,7 +92,7 @@ $(document).ready(function() {
                 searchable: false,
                 render: function(data) {
                     return `
-                        <a href="<?= base_url('filmDetails/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
+                        ${__adminPreviewBtn(data)}<a href="<?= base_url('filmDetails/edit/') ?>${data}" class="btn btn-sm btn-primary">Edit</a>
                         <button class="btn btn-sm btn-danger delete-film" data-id="${data}">Delete</button>
                     `;
                 }
