@@ -325,7 +325,7 @@ include('inc/sidebar.php');
                                             <option value=""></option>
                                         </select>
                                         
-                                        <button type="button" class="btn btn-primary" id="add_track_btn">
+                                        <button type="button" class="btn btn-primary" id="add_track_btn" style="white-space: nowrap; flex-shrink: 0;">
                                             <i class="fas fa-plus"></i> Add Track
                                         </button>
                                     </div>
