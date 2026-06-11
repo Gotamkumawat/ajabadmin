@@ -40,3 +40,24 @@
 .cke_button__source .cke_button_label {
     font-weight: normal;
 }
+
+/* =====================================================================
+ *  Admin form row-action buttons (Add New / Edit / Delete next to a
+ *  select). In tight columns the "Add New" label was wrapping onto two
+ *  lines, making that one button taller than its Edit/Delete siblings.
+ *  Force single-line text and stop the buttons from shrinking so every
+ *  Add New / Edit / Delete button keeps the same size across all pages.
+ * ===================================================================== */
+.btn.btn-sm {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+/* Catch the row-action buttons explicitly by id too (some omit btn-sm). */
+[id^="add"][id$="Btn"],
+[id^="edit"][id$="Btn"],
+[id^="delete"][id$="Btn"],
+#addOccupationBtn, #editOccupationBtn, #deleteOccupationBtn,
+#addProfileTagBtn, #editProfileTagBtn, #deleteProfileTagBtn {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
