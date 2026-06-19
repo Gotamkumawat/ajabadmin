@@ -85,7 +85,10 @@
     display: inline-flex;
     align-items: center;
     white-space: nowrap;
-    margin: 0;                         /* clear any per-form top offsets that pushed them apart */
+    margin: 0 !important;              /* clear per-form margins (e.g. mt-3) that pushed them apart */
+    position: static !important;       /* some forms set .save-btn { position:relative; top:-20px } */
+    top: auto !important;              /* which lifted Save above Preview — neutralise that */
+    transform: none !important;
 }
 .save-btn-container .admin-preview-btn i {
     margin-right: 6px;
