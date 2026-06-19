@@ -836,8 +836,84 @@ public function ajax_create_language() {
         ]);
     }
 
+    // ===================================================================
+    //  Series master (film_series table) — AJAX endpoints for the
+    //  "Add New Series" popup on the Film Details form.
+    // ===================================================================
 
+    /**
+     * Insert/update a series in the film_series master table and return it.
+     * Called by the popup's Save button so a new series persists immediately.
+     */
+    public function ajax_save_series() {
+        $this->output->set_content_type('application/json');
 
+        $title = trim((string) $this->input->post('series_title', true));
+        $desc  = (string) $this->input->post('series_description'); // allow HTML/long text
 
- 
+        if ($title === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Series title is required']);
+            return;
+        }
+        if (!$this->db->table_exists('film_series')) {
+            echo json_encode(['status' => 'error', 'message' => 'film_series table not found']);
+            return;
+        }
+
+        // Cap title to the column width (varchar(100)).
+        $title = mb_substr($title, 0, 100);
+
+        $existing = $this->db->select('id')->from('film_series')
+            ->where('LOWER(TRIM(series_title)) =', strtolower($title))
+            ->get()->row_array();
+
+        if (!empty($existing)) {
+            // Update the description on the existing series.
+            $this->db->where('id', (int) $existing['id'])
+                     ->update('film_series', ['series_description' => $desc]);
+            $id = (int) $existing['id'];
+        } else {
+            $this->db->insert('film_series', [
+                'series_title'       => $title,
+                'series_description' => $desc,
+            ]);
+            $id = (int) $this->db->insert_id();
+            if ($id <= 0) {
+                $err = $this->db->error();
+                echo json_encode(['status' => 'error', 'message' => !empty($err['message']) ? $err['message'] : 'Failed to save series']);
+                return;
+            }
+        }
+
+        echo json_encode([
+            'status'             => 'success',
+            'id'                 => (string) $id,
+            'series_title'       => $title,
+            'series_description' => $desc,
+            'message'            => 'Series saved',
+        ]);
+    }
+
+    /**
+     * Return all series (title + description) so the form can populate the
+     * dropdown and auto-fill the description when a title is selected.
+     */
+    public function ajax_list_series() {
+        $this->output->set_content_type('application/json');
+        $items = [];
+        if ($this->db->table_exists('film_series')) {
+            $rows = $this->db->select('id, series_title, series_description')
+                ->from('film_series')
+                ->order_by('series_title', 'ASC')
+                ->get()->result_array();
+            foreach ($rows as $r) {
+                $items[] = [
+                    'id'                 => (string) $r['id'],
+                    'series_title'       => (string) $r['series_title'],
+                    'series_description' => (string) ($r['series_description'] ?? ''),
+                ];
+            }
+        }
+        echo json_encode(['status' => 'success', 'data' => $items]);
+    }
 }

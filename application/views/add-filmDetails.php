@@ -361,33 +361,34 @@ include('inc/sidebar.php');
                             </div>
 
                             <?php
-                            // Build the list of distinct existing series titles from film_details.
-                            // Used to populate the Series Title dropdown so the user can pick
-                            // an existing series instead of re-typing it. "Add New" lets the
-                            // user enter a brand-new series with a description.
-                            $existing_series_titles = [];
-                            if ($this->db->table_exists('film_details')) {
+                            // Series master list comes from the film_series table (title + description).
+                            // The dropdown is populated from it; selecting a title auto-fills its
+                            // description (the JS map below). "Add New" saves a new series to this
+                            // table immediately via AJAX.
+                            $series_master = [];           // [ ['title'=>..,'desc'=>..], ... ]
+                            $series_desc_map = [];         // title => description (for JS auto-fill)
+                            if ($this->db->table_exists('film_series')) {
                                 $rows = $this->db
-                                    ->select('series_title')
-                                    ->distinct()
-                                    ->from('film_details')
-                                    ->where('series_title IS NOT NULL', null, false)
-                                    ->where("TRIM(series_title) <> ''", null, false)
+                                    ->select('series_title, series_description')
+                                    ->from('film_series')
                                     ->order_by('series_title', 'ASC')
                                     ->get()->result();
                                 foreach ($rows as $r) {
                                     $st = trim((string) $r->series_title);
-                                    if ($st !== '' && !in_array($st, $existing_series_titles, true)) {
-                                        $existing_series_titles[] = $st;
-                                    }
+                                    if ($st === '') { continue; }
+                                    $series_master[] = ['title' => $st, 'desc' => (string) $r->series_description];
+                                    $series_desc_map[$st] = (string) $r->series_description;
                                 }
                             }
+                            $existing_series_titles = array_column($series_master, 'title');
+
                             $current_series_title = isset($film) ? trim((string) $film->series_title) : '';
                             $current_series_desc  = isset($film) ? (string) $film->series_description : '';
-                            // If this film's existing series isn't in the list (was just deleted from others
-                            // or only used here), still show it so the dropdown reflects the saved value.
+                            // If this film's saved series isn't in the master list, still show it so the
+                            // dropdown reflects the saved value (and keep its description for auto-fill).
                             if ($current_series_title !== '' && !in_array($current_series_title, $existing_series_titles, true)) {
                                 $existing_series_titles[] = $current_series_title;
+                                $series_desc_map[$current_series_title] = $current_series_desc;
                                 sort($existing_series_titles);
                             }
                             ?>
@@ -457,6 +458,9 @@ include('inc/sidebar.php');
                                 var descNew    = document.getElementById('series_description_new');
                                 if (!sel || !hidden || !modal) return;
 
+                                // title -> description map (from the film_series table).
+                                var seriesDescMap = <?= json_encode($series_desc_map, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?> || {};
+
                                 function showModal() {
                                     try {
                                         if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('show'); return; }
@@ -482,33 +486,56 @@ include('inc/sidebar.php');
                                     setTimeout(function () { try { titleNew.focus(); } catch (e) {} }, 200);
                                 });
 
-                                // Save: add the new title to the dropdown (if needed), select it, and
-                                // copy the title + description into the hidden fields that POST.
+                                // Save: persist the series to the film_series table via AJAX, then
+                                // reflect it in the dropdown + the hidden fields that POST with the film.
                                 if (saveBtn) saveBtn.addEventListener('click', function () {
                                     var t = (titleNew.value || '').trim();
                                     var d = (descNew.value || '');
                                     if (t === '') { titleNew.focus(); return; }
 
-                                    // Add option if it doesn't already exist, then select it.
-                                    var exists = false;
-                                    for (var i = 0; i < sel.options.length; i++) {
-                                        if (sel.options[i].value === t) { exists = true; break; }
-                                    }
-                                    if (!exists) {
-                                        var opt = document.createElement('option');
-                                        opt.value = t; opt.textContent = t;
-                                        sel.appendChild(opt);
-                                    }
-                                    sel.value = t;
+                                    saveBtn.disabled = true;
+                                    var origText = saveBtn.textContent; saveBtn.textContent = 'Saving...';
 
-                                    hidden.value = t;
-                                    if (descPost) descPost.value = d;
-                                    hideModal();
+                                    var done = function (savedTitle, savedDesc) {
+                                        // add option if missing, then select it
+                                        var exists = false;
+                                        for (var i = 0; i < sel.options.length; i++) {
+                                            if (sel.options[i].value === savedTitle) { exists = true; break; }
+                                        }
+                                        if (!exists) {
+                                            var opt = document.createElement('option');
+                                            opt.value = savedTitle; opt.textContent = savedTitle;
+                                            sel.appendChild(opt);
+                                        }
+                                        sel.value = savedTitle;
+                                        seriesDescMap[savedTitle] = savedDesc;     // keep map fresh for auto-fill
+                                        hidden.value = savedTitle;
+                                        if (descPost) descPost.value = savedDesc;
+                                        saveBtn.disabled = false; saveBtn.textContent = origText;
+                                        hideModal();
+                                    };
+
+                                    var url = '<?= base_url('film/series/save') ?>';
+                                    if (window.jQuery) {
+                                        $.post(url, { series_title: t, series_description: d })
+                                         .done(function (res) {
+                                            try { if (typeof res === 'string') res = JSON.parse(res); } catch (e) {}
+                                            if (res && res.status === 'success') { done(res.series_title, res.series_description); }
+                                            else { alert((res && res.message) || 'Failed to save series'); saveBtn.disabled = false; saveBtn.textContent = origText; }
+                                         })
+                                         .fail(function () { alert('Network error saving series'); saveBtn.disabled = false; saveBtn.textContent = origText; });
+                                    } else {
+                                        // No jQuery — at least keep it working locally.
+                                        done(t, d);
+                                    }
                                 });
 
-                                // Picking an existing series keeps the hidden title field in sync.
+                                // Picking an existing series: sync the hidden title AND auto-fill the
+                                // description from the DB-backed map.
                                 sel.addEventListener('change', function () {
-                                    hidden.value = sel.value || '';
+                                    var t = sel.value || '';
+                                    hidden.value = t;
+                                    if (descPost) descPost.value = (t && seriesDescMap.hasOwnProperty(t)) ? seriesDescMap[t] : '';
                                 });
                             })();
                             </script>
