@@ -70,7 +70,11 @@
  *  same height / padding / font so Preview and Save always look equal.
  * ===================================================================== */
 .save-btn-container {
+    display: flex !important;          /* keep Preview + Save on ONE row */
     align-items: center;
+    justify-content: flex-end;         /* right-align the buttons */
+    gap: 10px;                         /* even space between them */
+    flex-wrap: nowrap;
 }
 .save-btn-container .btn,
 .save-btn-container .admin-preview-btn {
@@ -81,6 +85,7 @@
     display: inline-flex;
     align-items: center;
     white-space: nowrap;
+    margin: 0;                         /* clear any per-form top offsets that pushed them apart */
 }
 .save-btn-container .admin-preview-btn i {
     margin-right: 6px;

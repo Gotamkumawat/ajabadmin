@@ -341,7 +341,7 @@ if ($thumbRaw !== '') {
                         </div>
 
                             <div class="save-btn-container">
-                                <?= admin_edit_preview_button(isset($film_episode) ? $film_episode : null) ?>
+                                <?= admin_edit_preview_button(isset($filmEpisode) ? $filmEpisode : null) ?>
                                 <button type="submit" class="btn btn-primary save-btn">Save</button>
                             </div>
                         </form>
