@@ -1108,11 +1108,9 @@
       limit:    50
     },
     {
-      // The series description lives inside the "Add New Series" popup on the
-      // Film Details form (#series_description_new). The actual posted field
-      // (textarea[name="series_description"]) is hidden, so the counter is
-      // attached to the visible popup textarea instead.
-      selector: '#series_description_new, input[name="series_description"]:not(.d-none), textarea[name="series_description"]:not(.d-none)',
+      // Series Description on the Film Details form (visible field under Series
+      // Title) plus the same field inside the Add/Edit Series popup.
+      selector: 'input[name="series_description"], textarea[name="series_description"], #series_description_new',
       limit:    100
     }
   ];

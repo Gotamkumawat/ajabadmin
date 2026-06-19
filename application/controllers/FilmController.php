@@ -916,4 +916,23 @@ public function ajax_create_language() {
         }
         echo json_encode(['status' => 'success', 'data' => $items]);
     }
+
+    /**
+     * Delete a series from the film_series master table (by title).
+     * Called by the Series "Delete" button.
+     */
+    public function ajax_delete_series() {
+        $this->output->set_content_type('application/json');
+        $title = trim((string) $this->input->post('series_title', true));
+        if ($title === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Series title is required']);
+            return;
+        }
+        if (!$this->db->table_exists('film_series')) {
+            echo json_encode(['status' => 'error', 'message' => 'film_series table not found']);
+            return;
+        }
+        $this->db->where('LOWER(TRIM(series_title)) =', strtolower($title))->delete('film_series');
+        echo json_encode(['status' => 'success', 'message' => 'Series deleted', 'series_title' => $title]);
+    }
 }

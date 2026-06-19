@@ -394,8 +394,8 @@ include('inc/sidebar.php');
                             ?>
                             <div class="form-group row align-items-center">
                                 <label for="series_title_select" class="col-md-2 col-form-label">Series Title</label>
-                                <div class="col-md-4">
-                                    <div class="d-flex" style="gap:8px;">
+                                <div class="col-md-6">
+                                    <div class="d-flex align-items-center" style="gap:8px;">
                                         <select class="form-control" id="series_title_select" style="max-width:280px;">
                                             <option value="">Select Series Title</option>
                                             <?php foreach ($existing_series_titles as $st): ?>
@@ -403,18 +403,25 @@ include('inc/sidebar.php');
                                             <?php endforeach; ?>
                                         </select>
                                         <button type="button" class="btn btn-success btn-sm" id="addNewSeriesBtn" style="white-space:nowrap;">Add New</button>
+                                        <button type="button" class="btn btn-primary btn-sm" id="editSeriesBtn" style="white-space:nowrap;">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-sm" id="deleteSeriesBtn" style="white-space:nowrap;">Delete</button>
                                     </div>
                                     <!-- Hidden field that actually posts the chosen/new series title. -->
                                     <input type="hidden" id="series_title" name="series_title" value="<?= htmlspecialchars($current_series_title) ?>">
                                 </div>
                             </div>
 
-                            <!-- Series Description now lives inside the "Add New Series" popup below.
-                                 This field still posts series_description to the server unchanged;
-                                 it is just visually inside the modal. -->
-                            <textarea id="series_description" name="series_description" class="d-none"><?= htmlspecialchars($current_series_desc) ?></textarea>
+                            <!-- Series Description — visible on the page, right under Series Title.
+                                 Auto-filled from the DB when a series is selected; posts as
+                                 series_description with the film (backend unchanged). -->
+                            <div class="form-group row align-items-start">
+                                <label for="series_description" class="col-md-2 col-form-label">Series Description</label>
+                                <div class="col-md-6">
+                                    <textarea class="form-control" id="series_description" name="series_description" rows="4" placeholder="Enter Series Description (auto-fills when you pick a series)"><?= htmlspecialchars($current_series_desc) ?></textarea>
+                                </div>
+                            </div>
 
-                            <!-- ================= Add New Series popup ================= -->
+                            <!-- ================= Add/Edit Series popup ================= -->
                             <div class="modal fade" id="addSeriesModal" tabindex="-1" role="dialog" aria-labelledby="addSeriesModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
                                 <div class="modal-dialog" role="document">
                                     <div class="modal-content">
@@ -425,7 +432,7 @@ include('inc/sidebar.php');
                                         <div class="modal-body">
                                             <div class="form-group" style="display:block;">
                                                 <label>Series Title <span style="color:red">*</span></label>
-                                                <input type="text" class="form-control" id="series_title_new" placeholder="Enter new series title">
+                                                <input type="text" class="form-control" id="series_title_new" placeholder="Enter series title">
                                             </div>
                                             <div class="form-group" style="display:block;">
                                                 <label>Series Description</label>
@@ -450,9 +457,12 @@ include('inc/sidebar.php');
                             (function () {
                                 var sel        = document.getElementById('series_title_select');
                                 var hidden     = document.getElementById('series_title');
-                                var descPost   = document.getElementById('series_description');       // hidden field that actually posts
+                                var descPost   = document.getElementById('series_description');   // VISIBLE page field that posts
                                 var addBtn     = document.getElementById('addNewSeriesBtn');
+                                var editBtn    = document.getElementById('editSeriesBtn');
+                                var deleteBtn  = document.getElementById('deleteSeriesBtn');
                                 var modal      = document.getElementById('addSeriesModal');
+                                var modalTitle = document.getElementById('addSeriesModalLabel');
                                 var saveBtn    = document.getElementById('saveNewSeriesBtn');
                                 var titleNew   = document.getElementById('series_title_new');
                                 var descNew    = document.getElementById('series_description_new');
@@ -460,6 +470,8 @@ include('inc/sidebar.php');
 
                                 // title -> description map (from the film_series table).
                                 var seriesDescMap = <?= json_encode($series_desc_map, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?> || {};
+                                var editMode = false;      // false = adding new, true = editing selected
+                                var editOriginalTitle = '';
 
                                 function showModal() {
                                     try {
@@ -478,16 +490,56 @@ include('inc/sidebar.php');
                                     document.body.classList.remove('modal-open');
                                 }
 
-                                // Open popup. Pre-fill with whatever is currently chosen so editing feels natural.
+                                // ---- Add New: open an empty popup ----
                                 if (addBtn) addBtn.addEventListener('click', function () {
-                                    titleNew.value = sel.value || '';
-                                    descNew.value  = descPost ? (descPost.value || '') : '';
+                                    editMode = false; editOriginalTitle = '';
+                                    if (modalTitle) modalTitle.textContent = 'Add New Series';
+                                    titleNew.value = '';
+                                    descNew.value  = '';
                                     showModal();
                                     setTimeout(function () { try { titleNew.focus(); } catch (e) {} }, 200);
                                 });
 
-                                // Save: persist the series to the film_series table via AJAX, then
-                                // reflect it in the dropdown + the hidden fields that POST with the film.
+                                // ---- Edit: open the popup pre-filled with the selected series ----
+                                if (editBtn) editBtn.addEventListener('click', function () {
+                                    var t = sel.value || '';
+                                    if (t === '') { alert('Please select a series to edit.'); return; }
+                                    editMode = true; editOriginalTitle = t;
+                                    if (modalTitle) modalTitle.textContent = 'Edit Series';
+                                    titleNew.value = t;
+                                    descNew.value  = seriesDescMap.hasOwnProperty(t) ? seriesDescMap[t] : (descPost ? descPost.value : '');
+                                    showModal();
+                                    setTimeout(function () { try { titleNew.focus(); } catch (e) {} }, 200);
+                                });
+
+                                // ---- Delete: remove the selected series from the master table ----
+                                if (deleteBtn) deleteBtn.addEventListener('click', function () {
+                                    var t = sel.value || '';
+                                    if (t === '') { alert('Please select a series to delete.'); return; }
+                                    if (!confirm('Delete series "' + t + '"? This removes it from the series list.')) return;
+
+                                    var afterDelete = function () {
+                                        // remove option, clear selection + description
+                                        for (var i = 0; i < sel.options.length; i++) {
+                                            if (sel.options[i].value === t) { sel.remove(i); break; }
+                                        }
+                                        delete seriesDescMap[t];
+                                        sel.value = ''; hidden.value = '';
+                                        if (descPost) descPost.value = '';
+                                    };
+                                    var url = '<?= base_url('film/series/delete') ?>';
+                                    if (window.jQuery) {
+                                        $.post(url, { series_title: t })
+                                         .done(function (res) {
+                                            try { if (typeof res === 'string') res = JSON.parse(res); } catch (e) {}
+                                            if (res && res.status === 'success') { afterDelete(); }
+                                            else { alert((res && res.message) || 'Failed to delete series'); }
+                                         })
+                                         .fail(function () { alert('Network error deleting series'); });
+                                    } else { afterDelete(); }
+                                });
+
+                                // ---- Save (Add or Edit): persist via AJAX, then reflect in the form ----
                                 if (saveBtn) saveBtn.addEventListener('click', function () {
                                     var t = (titleNew.value || '').trim();
                                     var d = (descNew.value || '');
@@ -497,6 +549,13 @@ include('inc/sidebar.php');
                                     var origText = saveBtn.textContent; saveBtn.textContent = 'Saving...';
 
                                     var done = function (savedTitle, savedDesc) {
+                                        // If editing and the title changed, drop the old option.
+                                        if (editMode && editOriginalTitle && editOriginalTitle !== savedTitle) {
+                                            for (var j = 0; j < sel.options.length; j++) {
+                                                if (sel.options[j].value === editOriginalTitle) { sel.remove(j); break; }
+                                            }
+                                            delete seriesDescMap[editOriginalTitle];
+                                        }
                                         // add option if missing, then select it
                                         var exists = false;
                                         for (var i = 0; i < sel.options.length; i++) {
@@ -508,9 +567,13 @@ include('inc/sidebar.php');
                                             sel.appendChild(opt);
                                         }
                                         sel.value = savedTitle;
-                                        seriesDescMap[savedTitle] = savedDesc;     // keep map fresh for auto-fill
+                                        seriesDescMap[savedTitle] = savedDesc;
                                         hidden.value = savedTitle;
-                                        if (descPost) descPost.value = savedDesc;
+                                        if (descPost) {
+                                            descPost.value = savedDesc;
+                                            // refresh the word counter if one is attached
+                                            descPost.dispatchEvent(new Event('input'));
+                                        }
                                         saveBtn.disabled = false; saveBtn.textContent = origText;
                                         hideModal();
                                     };
@@ -525,17 +588,18 @@ include('inc/sidebar.php');
                                          })
                                          .fail(function () { alert('Network error saving series'); saveBtn.disabled = false; saveBtn.textContent = origText; });
                                     } else {
-                                        // No jQuery — at least keep it working locally.
                                         done(t, d);
                                     }
                                 });
 
-                                // Picking an existing series: sync the hidden title AND auto-fill the
-                                // description from the DB-backed map.
+                                // ---- Picking an existing series: auto-fill the page description field ----
                                 sel.addEventListener('change', function () {
                                     var t = sel.value || '';
                                     hidden.value = t;
-                                    if (descPost) descPost.value = (t && seriesDescMap.hasOwnProperty(t)) ? seriesDescMap[t] : '';
+                                    if (descPost) {
+                                        descPost.value = (t && seriesDescMap.hasOwnProperty(t)) ? seriesDescMap[t] : '';
+                                        descPost.dispatchEvent(new Event('input')); // refresh word counter
+                                    }
                                 });
                             })();
                             </script>

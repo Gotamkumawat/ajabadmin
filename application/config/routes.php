@@ -178,6 +178,7 @@ $route['filmepisode/save'] = 'FilmController/save_filmEpisode';
 $route['film/language/create'] = 'FilmController/ajax_create_language';
 $route['film/series/save'] = 'FilmController/ajax_save_series';
 $route['film/series/list'] = 'FilmController/ajax_list_series';
+$route['film/series/delete'] = 'FilmController/ajax_delete_series';
 
 // Route for update form submission
 $route['filmepisode/update'] = 'FilmController/update_filmEpisode';
