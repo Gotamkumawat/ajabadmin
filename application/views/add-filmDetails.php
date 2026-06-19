@@ -403,65 +403,113 @@ include('inc/sidebar.php');
                                         </select>
                                         <button type="button" class="btn btn-success btn-sm" id="addNewSeriesBtn" style="white-space:nowrap;">Add New</button>
                                     </div>
-                                    <!-- Inline "new series" panel — hidden by default, opens when "Add New" is clicked
-                                         or when the user is editing a film whose series isn't in the dropdown anymore. -->
-                                    <div id="newSeriesPanel" class="mt-2" style="display:none;">
-                                        <input type="text" class="form-control mb-2" id="series_title_new" placeholder="Enter new series title" style="max-width:380px;">
-                                        <button type="button" class="btn btn-secondary btn-sm" id="cancelNewSeriesBtn">Cancel</button>
-                                    </div>
-                                    <!-- Hidden field that actually posts to the server.
-                                         It's kept in sync with either the select or the new-series input. -->
+                                    <!-- Hidden field that actually posts the chosen/new series title. -->
                                     <input type="hidden" id="series_title" name="series_title" value="<?= htmlspecialchars($current_series_title) ?>">
                                 </div>
                             </div>
 
-                            <!-- Series Description: always visible. Backend reads series_description as before. -->
-                            <div class="form-group row align-items-start" id="series_description_row">
-                                <label for="series_description" class="col-md-2 col-form-label">Series Description</label>
-                                <div class="col-md-4">
-                                    <textarea class="form-control" id="series_description" name="series_description" placeholder="Enter Series Description"><?= htmlspecialchars($current_series_desc) ?></textarea>
+                            <!-- Series Description now lives inside the "Add New Series" popup below.
+                                 This field still posts series_description to the server unchanged;
+                                 it is just visually inside the modal. -->
+                            <textarea id="series_description" name="series_description" class="d-none"><?= htmlspecialchars($current_series_desc) ?></textarea>
+
+                            <!-- ================= Add New Series popup ================= -->
+                            <div class="modal fade" id="addSeriesModal" tabindex="-1" role="dialog" aria-labelledby="addSeriesModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+                                <div class="modal-dialog" role="document">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="addSeriesModalLabel">Add New Series</h5>
+                                            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="form-group" style="display:block;">
+                                                <label>Series Title <span style="color:red">*</span></label>
+                                                <input type="text" class="form-control" id="series_title_new" placeholder="Enter new series title">
+                                            </div>
+                                            <div class="form-group" style="display:block;">
+                                                <label>Series Description</label>
+                                                <textarea class="form-control" id="series_description_new" rows="4" placeholder="Enter Series Description"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                                            <button type="button" class="btn btn-primary" id="saveNewSeriesBtn">Save</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                            <style>
+                                #addSeriesModal .form-group { display:block !important; align-items:initial !important; }
+                                #addSeriesModal .form-group > label { display:block !important; flex:none !important; max-width:none !important; width:auto !important; margin-bottom:6px !important; padding-right:0 !important; }
+                                #addSeriesModal .form-group > *:not(label) { width:100% !important; flex:none !important; }
+                                #addSeriesModal { z-index: 100050; }
+                            </style>
 
                             <script>
                             (function () {
-                                var sel       = document.getElementById('series_title_select');
-                                var hidden    = document.getElementById('series_title');
-                                var addBtn    = document.getElementById('addNewSeriesBtn');
-                                var cancelBtn = document.getElementById('cancelNewSeriesBtn');
-                                var panel     = document.getElementById('newSeriesPanel');
-                                var newInput  = document.getElementById('series_title_new');
-                                if (!sel || !hidden) return;
+                                var sel        = document.getElementById('series_title_select');
+                                var hidden     = document.getElementById('series_title');
+                                var descPost   = document.getElementById('series_description');       // hidden field that actually posts
+                                var addBtn     = document.getElementById('addNewSeriesBtn');
+                                var modal      = document.getElementById('addSeriesModal');
+                                var saveBtn    = document.getElementById('saveNewSeriesBtn');
+                                var titleNew   = document.getElementById('series_title_new');
+                                var descNew    = document.getElementById('series_description_new');
+                                if (!sel || !hidden || !modal) return;
 
-                                function enterAddMode() {
-                                    sel.value = '';
-                                    sel.disabled = true;
-                                    panel.style.display = '';
-                                    if (newInput) { newInput.value = ''; newInput.focus(); }
-                                    hidden.value = '';
+                                function showModal() {
+                                    try {
+                                        if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('show'); return; }
+                                        if (window.bootstrap && bootstrap.Modal) { bootstrap.Modal.getOrCreateInstance(modal).show(); return; }
+                                    } catch (e) {}
+                                    modal.classList.add('show'); modal.style.display = 'block';
+                                    document.body.classList.add('modal-open');
+                                }
+                                function hideModal() {
+                                    try {
+                                        if (window.jQuery && $.fn && $.fn.modal) { $(modal).modal('hide'); return; }
+                                        if (window.bootstrap && bootstrap.Modal) { var inst = bootstrap.Modal.getInstance(modal); if (inst) { inst.hide(); return; } }
+                                    } catch (e) {}
+                                    modal.classList.remove('show'); modal.style.display = 'none';
+                                    document.body.classList.remove('modal-open');
                                 }
 
-                                function exitAddMode() {
-                                    sel.disabled = false;
-                                    panel.style.display = 'none';
-                                    if (newInput) newInput.value = '';
-                                    hidden.value = sel.value || '';
-                                }
+                                // Open popup. Pre-fill with whatever is currently chosen so editing feels natural.
+                                if (addBtn) addBtn.addEventListener('click', function () {
+                                    titleNew.value = sel.value || '';
+                                    descNew.value  = descPost ? (descPost.value || '') : '';
+                                    showModal();
+                                    setTimeout(function () { try { titleNew.focus(); } catch (e) {} }, 200);
+                                });
 
-                                // Sync hidden field when an existing series is picked.
+                                // Save: add the new title to the dropdown (if needed), select it, and
+                                // copy the title + description into the hidden fields that POST.
+                                if (saveBtn) saveBtn.addEventListener('click', function () {
+                                    var t = (titleNew.value || '').trim();
+                                    var d = (descNew.value || '');
+                                    if (t === '') { titleNew.focus(); return; }
+
+                                    // Add option if it doesn't already exist, then select it.
+                                    var exists = false;
+                                    for (var i = 0; i < sel.options.length; i++) {
+                                        if (sel.options[i].value === t) { exists = true; break; }
+                                    }
+                                    if (!exists) {
+                                        var opt = document.createElement('option');
+                                        opt.value = t; opt.textContent = t;
+                                        sel.appendChild(opt);
+                                    }
+                                    sel.value = t;
+
+                                    hidden.value = t;
+                                    if (descPost) descPost.value = d;
+                                    hideModal();
+                                });
+
+                                // Picking an existing series keeps the hidden title field in sync.
                                 sel.addEventListener('change', function () {
                                     hidden.value = sel.value || '';
                                 });
-
-                                if (addBtn) addBtn.addEventListener('click', enterAddMode);
-                                if (cancelBtn) cancelBtn.addEventListener('click', exitAddMode);
-
-                                // While typing the new series title, keep the hidden field in sync.
-                                if (newInput) {
-                                    newInput.addEventListener('input', function () {
-                                        hidden.value = (newInput.value || '').trim();
-                                    });
-                                }
                             })();
                             </script>
 
