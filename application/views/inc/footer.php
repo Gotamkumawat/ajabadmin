@@ -66,8 +66,18 @@
 <!-- Admin-wide CKEditor toolbar: forces ONE standard toolbar (ported from
      the old textAngular admin) onto every editor, incl. custom couplet/refrain
      buttons. Single source of truth — see assets/js/admin-ckeditor.js. -->
-<script>window.__ADMIN_EDITOR_CSS = "<?php echo base_url('assets/css/admin-editor.css'); ?>";</script>
-<script src="<?php echo base_url('assets/js/admin-ckeditor.js'); ?>"></script>
+<?php
+  // Cache-buster: append the file's last-modified time so browsers / CKEditor
+  // always fetch the latest admin-editor.css and admin-ckeditor.js after a
+  // deploy (otherwise the old cached copy can hide CSS changes like the
+  // editor's default centre-alignment on the live server).
+  $__editorCssPath = FCPATH . 'assets/css/admin-editor.css';
+  $__editorJsPath  = FCPATH . 'assets/js/admin-ckeditor.js';
+  $__editorCssVer  = is_file($__editorCssPath) ? filemtime($__editorCssPath) : time();
+  $__editorJsVer   = is_file($__editorJsPath)  ? filemtime($__editorJsPath)  : time();
+?>
+<script>window.__ADMIN_EDITOR_CSS = "<?php echo base_url('assets/css/admin-editor.css') . '?v=' . $__editorCssVer; ?>";</script>
+<script src="<?php echo base_url('assets/js/admin-ckeditor.js') . '?v=' . $__editorJsVer; ?>"></script>
 <script>
     // Suppress CKEditor "version not secure" notification globally
     if (typeof CKEDITOR !== 'undefined') {

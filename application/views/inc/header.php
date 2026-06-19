@@ -50,8 +50,9 @@ if (!function_exists('admin_edit_preview_button')) {
   <link rel="stylesheet" href="<?php echo base_url('plugins/jqvmap/jqvmap.min.css'); ?>">
   <!-- Theme style -->
   <link rel="stylesheet" href="<?php echo base_url('dist/css/adminlte.min.css'); ?>">
-  <!-- Admin editor marks (couplet / refrain) — also injected into CKEditor iframe -->
-  <link rel="stylesheet" href="<?php echo base_url('assets/css/admin-editor.css'); ?>">
+  <!-- Admin editor marks (couplet / refrain) — also injected into CKEditor iframe.
+       ?v=<mtime> cache-buster so deploys always pick up the latest CSS. -->
+  <link rel="stylesheet" href="<?php echo base_url('assets/css/admin-editor.css') . '?v=' . (is_file(FCPATH . 'assets/css/admin-editor.css') ? filemtime(FCPATH . 'assets/css/admin-editor.css') : time()); ?>">
   <!-- overlayScrollbars -->
   <link rel="stylesheet" href="<?php echo base_url('plugins/overlayScrollbars/css/OverlayScrollbars.min.css'); ?>">
   <!-- Daterange picker -->
