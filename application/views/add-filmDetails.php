@@ -881,6 +881,7 @@ include('inc/sidebar.php');
                                 <button type="button" class="btn btn-primary" onclick="switchTab('episode-content')">
                                     Next: Film Episode <i class="fas fa-arrow-right"></i>
                                 </button>
+                                <?= admin_edit_preview_button(isset($film) ? $film : null) ?>
                                 <button type="submit" class="btn btn-primary">Save Film</button>
                             </div>
                         </form>

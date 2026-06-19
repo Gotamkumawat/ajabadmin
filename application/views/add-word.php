@@ -417,6 +417,7 @@ include('inc/sidebar.php');
                             </div>
                         </div>
                         <div class="save-btn-container" style="margin-top: 30px;">
+                            <?= admin_edit_preview_button(isset($word) ? $word : null) ?>
                             <button type="submit" class="btn btn-primary btn-lg save-btn">Save</button>
                         </div>
                     </form>

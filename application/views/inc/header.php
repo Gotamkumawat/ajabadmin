@@ -1,4 +1,34 @@
-
+<?php
+/**
+ * Admin EDIT-form "Preview" button helper.
+ * Renders the same cyan "Preview" button used in the list-page row actions
+ * (class .admin-preview-btn — handled globally in inc/footer.php), but only
+ * when a record is being EDITED. Pass the record (array or object) or a raw
+ * id; on an Add form (no id) it renders nothing.
+ *
+ * Usage inside any add/edit view, next to the Save button:
+ *     <?= admin_edit_preview_button($couplet) ?>
+ *     <?= admin_edit_preview_button($person) ?>
+ */
+if (!function_exists('admin_edit_preview_button')) {
+    function admin_edit_preview_button($record, $idKey = 'id') {
+        $id = null;
+        if (is_array($record)) {
+            $id = isset($record[$idKey]) ? $record[$idKey] : null;
+        } elseif (is_object($record)) {
+            $id = isset($record->$idKey) ? $record->$idKey : null;
+        } elseif (is_numeric($record)) {
+            $id = $record;
+        }
+        if ($id === null || $id === '' || (int) $id <= 0) {
+            return ''; // Add mode (or no id) → no Preview button
+        }
+        return '<button type="button" class="btn btn-info admin-preview-btn mr-2" data-id="'
+             . htmlspecialchars((string) $id, ENT_QUOTES) . '">'
+             . '<i class="far fa-eye"></i> Preview</button>';
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en" ng-app="cartoonApp" ng-controller="cartoonCtrl">
 <head>

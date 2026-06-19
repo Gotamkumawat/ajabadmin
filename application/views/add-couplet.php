@@ -1939,6 +1939,7 @@ if (!function_exists('couplet_parse_id_list')) {
                         </div>
 
                         <div class="save-btn-container">
+                            <?= admin_edit_preview_button(isset($couplet) ? $couplet : null) ?>
                             <button type="submit" class="btn btn-primary">Save</button>
                         </div>
                     </form>

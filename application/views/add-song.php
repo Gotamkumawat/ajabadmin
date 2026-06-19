@@ -2464,6 +2464,7 @@ include('inc/sidebar.php');
                         
 
                         <div class="save-btn-container">
+                            <?= admin_edit_preview_button(isset($song) ? $song : null) ?>
                             <button type="submit" class="btn btn-primary save-btn mt-3">Save</button>
                         </div>
                     </form>

@@ -802,6 +802,7 @@ include('inc/sidebar.php');
                             </div>
                         </div>
                         <div class="save-btn-container">
+                            <?= admin_edit_preview_button(isset($person) ? $person : null) ?>
                             <button type="submit" class="btn btn-primary save-btn">Save</button>
                         </div>
                     </form>

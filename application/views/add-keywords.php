@@ -373,6 +373,7 @@ input[type="checkbox"] { width: auto; height: auto; margin-right: 10px; }
                         </div>
 
                         <div class="save-btn-container">
+                            <?= admin_edit_preview_button(isset($keyword) ? $keyword : null) ?>
                             <button type="submit" class="btn btn-primary">Save Keyword</button>
                         </div>
                     </form>

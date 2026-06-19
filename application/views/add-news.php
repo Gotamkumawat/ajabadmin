@@ -463,6 +463,7 @@ $news = $edit_mode ? $news : array(
                         <!-- Removed Add More button and related row -->
 
                         <div style="display: flex; justify-content: flex-end;">
+                            <?= admin_edit_preview_button((isset($edit_mode) && $edit_mode && isset($news)) ? $news : null) ?>
                             <button type="submit" class="btn btn-primary"><?php echo $edit_mode ? 'Update' : 'Save'; ?></button>
                         </div>
                         

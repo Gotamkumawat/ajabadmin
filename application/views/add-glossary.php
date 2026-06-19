@@ -364,6 +364,7 @@ $songs_options = $this->db->query("SELECT id, Songtitle_transliteration FROM son
                         </div>
 
                         <div class="save-btn-container">
+                            <?= admin_edit_preview_button(isset($glossary) ? $glossary : null) ?>
                             <button type="submit" class="btn btn-primary">
                                 <?php echo isset($glossary) && $glossary ? 'Update Glossary' : 'Save Glossary'; ?>
                             </button>

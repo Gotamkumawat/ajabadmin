@@ -436,6 +436,7 @@ include('inc/sidebar.php');
                             </div>
                         </div>
                         <div class="save-btn-container">
+                            <?= admin_edit_preview_button(isset($resource) ? $resource : null) ?>
                             <button type="submit" ng-click="saveData()" ng-disabled="!songForm.$valid" class="btn btn-primary btn-lg save-btn">
                                 <?php echo isset($resource) ? 'Update' : 'Save'; ?>
                             </button>

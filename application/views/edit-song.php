@@ -1197,6 +1197,7 @@ include('inc/sidebar.php');
                     </div> -->
                 </div>
                         <br/>
+                       <?= admin_edit_preview_button(isset($song) ? $song : null) ?>
                        <button type="submit" class="btn btn-primary">Save</button>
                     </form>
                 </div>
