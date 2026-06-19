@@ -61,3 +61,44 @@
     white-space: nowrap;
     flex-shrink: 0;
 }
+
+/* =====================================================================
+ *  Edit-form Preview button — match the Save button size.
+ *  The Preview button (.admin-preview-btn) sits beside Save inside
+ *  .save-btn-container. Save's size varies per form (some use btn-lg,
+ *  some custom padding), so force BOTH buttons in this container to the
+ *  same height / padding / font so Preview and Save always look equal.
+ * ===================================================================== */
+.save-btn-container {
+    align-items: center;
+}
+.save-btn-container .btn,
+.save-btn-container .admin-preview-btn {
+    height: 40px;
+    padding: 0 20px !important;
+    font-size: 15px !important;
+    line-height: 38px !important;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.save-btn-container .admin-preview-btn i {
+    margin-right: 6px;
+}
+
+/* =====================================================================
+ *  Default text alignment inside every CKEditor — CENTER.
+ *  This stylesheet is injected into the editor's editing iframe (via
+ *  config.contentsCss in admin-ckeditor.js), so `body.cke_editable`
+ *  targets ONLY the rich-text editing area, not the admin page itself.
+ *  New paragraphs the user types start centred (as if the Center button
+ *  were pressed); the Justify Left/Right/Block buttons still override it
+ *  per block because they add an inline text-align style.
+ * ===================================================================== */
+html body.cke_editable,
+html body.cke_editable p,
+html body.cke_editable div,
+html body.cke_editable li,
+html body.cke_editable td {
+    text-align: center;
+}
