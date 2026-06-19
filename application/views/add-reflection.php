@@ -517,7 +517,7 @@ include('inc/sidebar.php');
                                     <div class="col-12">
                                         <div class="form-group">
                                             <label>About</label>
-                                            <textarea name="interview_about" class="form-control" rows="3" placeholder="Enter about"><?php echo isset($reflection->interview_about) ? $reflection->interview_about : ''; ?></textarea>
+                                            <textarea name="interview_about" id="interview_about" class="form-control" rows="3" placeholder="Enter about"><?php echo isset($reflection->interview_about) ? $reflection->interview_about : ''; ?></textarea>
                                         </div>
                                     </div>
                                 </div>
@@ -1176,9 +1176,11 @@ $(document).ready(function() {
         allowClear: true
     });
 
-    // Initialize CKEditor
+    // Initialize CKEditor (same rich-text editor for Text Interview AND About).
+    // The admin-wide toolbar (assets/js/admin-ckeditor.js) overrides the inline
+    // toolbar below, so both editors get the standard admin toolbar.
     setTimeout(function() {
-        CKEDITOR.replace('interview_text', {
+        var __reflectionEditorCfg = {
             height: 200,
             extraPlugins: 'colorbutton,font,justify',
             toolbar: [
@@ -1189,7 +1191,13 @@ $(document).ready(function() {
                 { name: 'styles', items: ['Styles', 'Format', 'Font', 'FontSize'] },
                 { name: 'colors', items: ['TextColor', 'BGColor'] }
             ]
-        });
+        };
+        if (document.getElementById('interview_text')) {
+            CKEDITOR.replace('interview_text', __reflectionEditorCfg);
+        }
+        if (document.getElementById('interview_about')) {
+            CKEDITOR.replace('interview_about', __reflectionEditorCfg);
+        }
     }, 500);
 
     $('#add_new_category').click(function(){
